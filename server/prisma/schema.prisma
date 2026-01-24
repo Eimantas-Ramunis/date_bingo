@@ -1,0 +1,94 @@
+// This is the Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String @id @default(uuid())
+  username     String @unique
+  passwordHash String
+}
+
+model DateIdea {
+  id               String        @id @default(uuid())
+  title            String
+  shortDescription String
+  image            String?       // Filename of uploaded image
+  vibes            String // JSON array
+  purposeTags      String // JSON array
+  energy           String // low, med, high
+  seasonTags       String // JSON array
+  radius           String
+  duration         String
+  budget           String
+  prepChecklist    String // JSON array
+  planB            String // JSON object: { title, description, steps: [] }
+  cooldownDays     Int           @default(45)
+  lastDoneAt       DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  PlannedDates     PlannedDate[]
+}
+
+model PlannedDate {
+  id              String    @id @default(uuid())
+  ideaId          String
+  idea            DateIdea  @relation(fields: [ideaId], references: [id])
+  
+  // Hint fields (LT)
+  hintTeaser      String
+  hintStartTime   String
+  hintDressCode   String
+  hintDuration    String
+  
+  // Reveal fields
+  planASteps      String // JSON array
+  planBSteps      String // JSON array (cached from idea at plan time)
+  planBTitle      String // Cached
+  planBDesc       String // Cached
+  
+  // State
+  status          String    @default("PLANNED") // PLANNED, HINT_SENT, REVEAL_SENT, VETOED, DONE, DEFERRED
+  vetoReason      String?
+  planBActive     Boolean   @default(false)
+  
+  // Completion data
+  notes           String?
+  rating          Int?
+  completedAt     DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  Tokens          Token[]
+}
+
+model Token {
+  hash          String      @id
+  type          String      // HINT, REVEAL
+  expiry        DateTime
+  revoked       Boolean     @default(false)
+  plannedDateId String
+  plannedDate   PlannedDate @relation(fields: [plannedDateId], references: [id])
+  createdAt     DateTime    @default(now())
+}
+
+model BingoTile {
+  id        String    @id // t1...t9
+  code      String
+  earnedAt  DateTime?
+}
+
+model Log {
+  id        String   @id @default(uuid())
+  level     String
+  message   String
+  meta      String?  // JSON
+  timestamp DateTime @default(now())
+}

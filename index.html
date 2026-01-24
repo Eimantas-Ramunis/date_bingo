@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Date Bingo v1 + Gemini AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Fixed: Point to specific UMD build of lucide-react -->
+  <script src="https://unpkg.com/lucide-react@0.263.1/dist/umd/lucide-react.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap');
+    
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    h1, h2, h3 {
+      font-family: 'Playfair Display', serif;
+    }
+    .fade-in {
+      animation: fadeIn 0.3s ease-in-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .shimmer {
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+  </style>
+</head>
+<body class="bg-stone-100">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    
+    // Fallback if lucideReact is not loaded correctly
+    const Icons = window.lucideReact || {};
+    const { 
+      Heart, Calendar, Shuffle, CheckCircle, XCircle, MapPin, Clock, DollarSign, 
+      RefreshCw, Lock, Unlock, Share2, ArrowLeft, Coffee, Moon, Sun, Smile, 
+      MessageCircle, Shield, Zap, Gift, Sparkles, Wand2
+    } = Icons;
+
+    // --- GEMINI API INTEGRATION ---
+    const apiKey = ""; // Provided by runtime environment
+
+    async function callGemini(prompt, systemPrompt = "You are a helpful assistant.") {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+      
+      const payload = {
+        contents: [{ parts: [{ text: prompt }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] }
+      };
+
+      // Exponential backoff retry logic
+      let delay = 1000;
+      for (let i = 0; i < 5; i++) {
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+          
+          const data = await response.json();
+          return data.candidates?.[0]?.content?.parts?.[0]?.text;
+        } catch (e) {
+          if (i === 4) throw e;
+          await new Promise(r => setTimeout(r, delay));
+          delay *= 2;
+        }
+      }
+    }
+
+    // --- APP CODE ---
+    
+    // Initial Seed Data based on PRD Taxonomy
+    const INITIAL_IDEAS = [
+      {
+        id: 'idea-1',
+        title: 'Hidden Jazz Bar & Late Night Walk',
+        shortDescription: 'Smooth tunes in a dimly lit basement followed by a quiet city stroll.',
+        vibes: ['romantic', 'chill'],
+        purposeTags: ['passion', 'talk'],
+        energy: 'med',
+        seasonTags: ['winter_ok'],
+        radius: 'vilnius',
+        duration: '2-3h',
+        budget: '$$',
+        prepChecklist: ['Check jazz schedule', 'Book table', 'Cash for tips'],
+        planB: {
+          title: 'Cozy Vinyl Listening at Home',
+          shortDescription: 'We pick 3 albums each, dim lights, and just listen.',
+          steps: ['Order favorite takeout', 'Light candles', 'Phones in box'],
+          vibes: ['cozy', 'chill'],
+          energy: 'low'
+        },
+        cooldownDays: 30,
+        lastDoneAt: null
+      },
+      {
+        id: 'idea-2',
+        title: 'Pottery Wheel Throwdown',
+        shortDescription: 'Getting messy together trying to make a bowl that actually holds water.',
+        vibes: ['playful', 'creative'],
+        purposeTags: ['laugh', 'novelty'],
+        energy: 'high',
+        seasonTags: ['all_year'],
+        radius: 'vilnius',
+        duration: '2h',
+        budget: '$$$',
+        prepChecklist: ['Book workshop slot', 'Wear clothes that can get dirty'],
+        planB: {
+          title: 'Bad Art Challenge',
+          shortDescription: 'Buy cheap canvas and paint. 20 mins to paint each other.',
+          steps: ['Buy supplies', 'Put down tarp', 'Wine'],
+          vibes: ['playful', 'low-stakes'],
+          energy: 'med'
+        },
+        cooldownDays: 45,
+        lastDoneAt: null
+      },
+      {
+        id: 'idea-3',
+        title: 'Blanket Fort & Movie Marathon',
+        shortDescription: 'Constructing a structural masterpiece in the living room.',
+        vibes: ['cozy', 'safe'],
+        purposeTags: ['anti_spiral', 'safe_fallback'],
+        energy: 'low',
+        seasonTags: ['winter_ok'],
+        radius: 'home',
+        duration: '4h+',
+        budget: '$',
+        prepChecklist: ['Wash all blankets', 'Buy excessive snacks'],
+        planB: {
+          title: 'Just Pizza & Silence',
+          shortDescription: 'Zero pressure. Good food. No talking required.',
+          steps: ['Order pizza', 'Put on comfort show'],
+          vibes: ['chill'],
+          energy: 'low'
+        },
+        cooldownDays: 14,
+        lastDoneAt: null
+      }
+    ];
+
+    const BINGO_TILES_CONFIG = [
+      { id: 't1', label: 'We touched base', type: 'soft', rule: 'purpose_passion_OR_touch_ritual' },
+      { id: 't2', label: 'Outside in daylight', type: 'playful', rule: 'vibes_outdoors_OR_tag_daylight' },
+      { id: 't3', label: 'No-scroll hour', type: 'soft-playful', rule: 'toggle_phones_away' },
+      { id: 't4', label: 'Laughed together', type: 'playful', rule: 'purpose_laugh_OR_toggle_laugh' },
+      { id: 't5', label: 'Not roommates', type: 'soft', rule: 'purpose_talk_OR_toggle_honest' },
+      { id: 't6', label: 'Something new', type: 'playful', rule: 'purpose_novelty_OR_toggle_new' },
+      { id: 't7', label: 'Warm & safe', type: 'soft', rule: 'purpose_anti_spiral_OR_low_energy_complete' },
+      { id: 't8', label: 'You planned it', type: 'soft', rule: 'automatic_planned_to_done' },
+      { id: 't9', label: 'Plan B saved the day', type: 'playful', rule: 'veto_happened_OR_plan_b' }
+    ];
+
+    const ENERGY_COLORS = {
+      low: 'bg-blue-100 text-blue-800 border-blue-200',
+      med: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      high: 'bg-orange-100 text-orange-800 border-orange-200'
+    };
+
+    const VIBE_COLORS = {
+      romantic: 'bg-pink-100 text-pink-800',
+      playful: 'bg-purple-100 text-purple-800',
+      cozy: 'bg-amber-100 text-amber-800',
+      sexy: 'bg-red-100 text-red-800',
+      chill: 'bg-slate-100 text-slate-800',
+      safe: 'bg-emerald-100 text-emerald-800',
+      creative: 'bg-indigo-100 text-indigo-800'
+    };
+
+    const Card = ({ children, className = "" }) => (
+      <div className={`bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden ${className}`}>
+        {children}
+      </div>
+    );
+
+    const Badge = ({ children, className = "" }) => (
+      <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${className}`}>
+        {children}
+      </span>
+    );
+
+    const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false, icon: Icon }) => {
+      const variants = {
+        primary: 'bg-stone-800 text-white hover:bg-stone-700 active:bg-stone-900',
+        secondary: 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-50 active:bg-stone-100',
+        ghost: 'bg-transparent text-stone-600 hover:bg-stone-100',
+        danger: 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100',
+        success: 'bg-emerald-600 text-white hover:bg-emerald-700',
+        magic: 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700 shadow-md'
+      };
+
+      return (
+        <button 
+          onClick={onClick}
+          disabled={disabled}
+          className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none ${variants[variant]} ${className}`}
+        >
+          {Icon && <Icon size={18} />}
+          {children}
+        </button>
+      );
+    };
+
+    const ReceiverView = ({ plannedDate, onVeto, mode }) => {
+      if (!plannedDate) return <div className="p-8 text-center text-stone-500">No date planned yet!</div>;
+
+      const isReveal = mode === 'reveal';
+      const isVetoed = plannedDate.status === 'vetoed' || plannedDate.veto?.planBActivated;
+      const planA = plannedDate.ideaSnapshot;
+      const planB = planA.planB;
+
+      if (isVetoed) {
+        return (
+          <div className="max-w-md mx-auto min-h-screen bg-stone-50 p-6 flex flex-col gap-6">
+            <div className="text-center space-y-2 mt-8">
+              <div className="inline-flex p-3 bg-emerald-100 text-emerald-600 rounded-full mb-2">
+                {Shield ? <Shield size={32} /> : <span>Shield</span>}
+              </div>
+              <h1 className="text-2xl font-serif text-stone-800">Plan B Activated</h1>
+              <p className="text-stone-600 italic">"No problem. We planned for this."</p>
+            </div>
+
+            <Card className="p-6 bg-white border-emerald-200 shadow-md">
+              <div className="uppercase tracking-wide text-xs font-bold text-stone-400 mb-2">Original Plan (De-hyped)</div>
+              <div className="text-stone-500 line-through decoration-stone-400">{planA.title}</div>
+              <div className="mt-6 uppercase tracking-wide text-xs font-bold text-emerald-600 mb-2">New Plan</div>
+              <h2 className="text-xl font-bold text-stone-800 mb-2">{planB.title}</h2>
+              <p className="text-stone-600 leading-relaxed mb-4">{planB.shortDescription}</p>
+              
+              <div className="bg-stone-50 p-4 rounded-lg space-y-2">
+                <h3 className="font-semibold text-stone-700 text-sm">Steps:</h3>
+                <ul className="space-y-1">
+                  {planB.steps.map((step, i) => (
+                    <li key={i} className="flex items-start gap-2 text-stone-600 text-sm">
+                      <span className="mt-1 block w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"/>
+                      {step}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Card>
+            
+            <div className="mt-auto text-center text-xs text-stone-400 pb-8">
+              Enjoy your low-pressure evening.
+            </div>
+          </div>
+        );
+      }
+
+      if (!isReveal) {
+        return (
+          <div className="max-w-md mx-auto min-h-screen bg-gradient-to-br from-stone-50 to-stone-100 p-6 flex flex-col">
+            <div className="flex-1 flex flex-col justify-center gap-6">
+              <div className="text-center">
+                <Badge className="bg-stone-200 text-stone-600 border-stone-300 mb-4">Tomorrow's Date</Badge>
+                <h1 className="text-3xl font-serif text-stone-800">A Little Hint...</h1>
+              </div>
+
+              <Card className="p-8 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                  {Gift ? <Gift size={120} /> : null}
+                </div>
+                
+                <div className="relative z-10 space-y-6">
+                  <div>
+                    <label className="text-xs font-bold text-stone-400 uppercase tracking-wider">Teaser</label>
+                    <p className="text-lg font-medium text-stone-700 mt-1">"{plannedDate.hint?.teaserLine || planA.shortDescription}"</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-stone-50 p-3 rounded-lg">
+                      <div className="flex items-center gap-2 text-stone-500 mb-1">
+                        {Clock ? <Clock size={14} /> : <span>T</span>}
+                        <span className="text-xs font-bold uppercase">Start Time</span>
+                      </div>
+                      <div className="font-semibold text-stone-800">{plannedDate.hint?.startTime || "TBD"}</div>
+                    </div>
+                    <div className="bg-stone-50 p-3 rounded-lg">
+                      <div className="flex items-center gap-2 text-stone-500 mb-1">
+                        {Sun ? <Sun size={14} /> : <span>S</span>}
+                        <span className="text-xs font-bold uppercase">Dress Code</span>
+                      </div>
+                      <div className="font-semibold text-stone-800">{plannedDate.hint?.dressCode || "Casual"}</div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-stone-100 flex gap-2 flex-wrap">
+                     {planA.vibes.map(v => (
+                       <Badge key={v} className={VIBE_COLORS[v] || 'bg-gray-100'}>{v}</Badge>
+                     ))}
+                  </div>
+                </div>
+              </Card>
+            </div>
+            <div className="text-center text-xs text-stone-400 pb-8">
+              Full details will reveal tomorrow.
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="max-w-md mx-auto min-h-screen bg-stone-50 p-6 pb-24">
+          <div className="text-center mb-6 mt-4">
+            <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200 mb-3">It's Happening</Badge>
+            <h1 className="text-3xl font-serif text-stone-900 leading-tight">{planA.title}</h1>
+          </div>
+
+          <Card className="overflow-hidden mb-6">
+             <div className="bg-stone-800 text-white p-6">
+               <p className="text-lg opacity-90 leading-relaxed">{planA.shortDescription}</p>
+             </div>
+             
+             <div className="p-6 grid grid-cols-2 gap-y-6 gap-x-4">
+                <div>
+                  <div className="flex items-center gap-2 text-stone-400 mb-1">
+                    {Clock ? <Clock size={16} /> : <span>T</span>}
+                    <span className="text-xs font-bold uppercase">Duration</span>
+                  </div>
+                  <div className="font-medium text-stone-700">{planA.duration}</div>
+                </div>
+                
+                <div>
+                  <div className="flex items-center gap-2 text-stone-400 mb-1">
+                    {MapPin ? <MapPin size={16} /> : <span>L</span>}
+                    <span className="text-xs font-bold uppercase">Location</span>
+                  </div>
+                  <div className="font-medium text-stone-700 capitalize">{planA.radius}</div>
+                </div>
+
+                <div className="col-span-2">
+                   <div className="flex items-center gap-2 text-stone-400 mb-1">
+                    {Zap ? <Zap size={16} /> : <span>E</span>}
+                    <span className="text-xs font-bold uppercase">Energy Level</span>
+                  </div>
+                   <Badge className={`inline-block ${ENERGY_COLORS[planA.energy]}`}>{planA.energy.toUpperCase()}</Badge>
+                </div>
+             </div>
+          </Card>
+
+          <div className="mt-8 space-y-4">
+            <p className="text-center text-sm text-stone-500">Not feeling it today? No guilt.</p>
+            <Button 
+              variant="secondary" 
+              className="w-full border-red-200 text-red-600 hover:bg-red-50"
+              onClick={() => onVeto('not_today')}
+            >
+              {XCircle ? <XCircle size={18} /> : <span>X</span>}
+              Veto & Switch to Plan B
+            </Button>
+          </div>
+        </div>
+      );
+    };
+
+    const IdeaCard = ({ idea, onSelect, isSelected }) => (
+      <div 
+        onClick={() => onSelect && onSelect(idea)}
+        className={`
+          relative p-5 rounded-xl border transition-all cursor-pointer bg-white
+          ${isSelected 
+            ? 'border-stone-800 ring-2 ring-stone-800 shadow-lg' 
+            : 'border-stone-200 hover:border-stone-300 shadow-sm'
+          }
+        `}
+      >
+        <div className="flex justify-between items-start mb-2">
+          <h3 className="font-bold text-lg text-stone-800 pr-4 leading-tight">{idea.title}</h3>
+          <Badge className={ENERGY_COLORS[idea.energy]}>{idea.energy}</Badge>
+        </div>
+        
+        <p className="text-stone-600 text-sm mb-4 line-clamp-2">{idea.shortDescription}</p>
+
+        <div className="flex flex-wrap gap-2 mb-4">
+          {idea.vibes.slice(0, 3).map(v => (
+            <Badge key={v} className={VIBE_COLORS[v] || 'bg-gray-100 text-gray-600'}>
+              {v}
+            </Badge>
+          ))}
+        </div>
+
+        <div className="pt-3 border-t border-stone-100 flex items-center justify-between text-xs text-stone-400">
+          <div className="flex items-center gap-1">
+            {Clock ? <Clock size={12} /> : <span>T</span>} {idea.duration}
+          </div>
+          <div className="flex items-center gap-1">
+            {DollarSign ? <DollarSign size={12} /> : <span>$</span>} {idea.budget}
+          </div>
+        </div>
+      </div>
+    );
+
+    const BingoBoard = ({ earnedTiles }) => {
+      return (
+        <div className="grid grid-cols-3 gap-2 p-2 bg-stone-100 rounded-xl aspect-square">
+          {BINGO_TILES_CONFIG.map((tile, i) => {
+            const isEarned = earnedTiles.includes(tile.id);
+            const variants = {
+              soft: 'bg-rose-50 border-rose-100',
+              playful: 'bg-sky-50 border-sky-100',
+              'soft-playful': 'bg-purple-50 border-purple-100'
+            };
+            const earnedVariants = {
+              soft: 'bg-rose-500 text-white border-rose-600',
+              playful: 'bg-sky-500 text-white border-sky-600',
+              'soft-playful': 'bg-purple-500 text-white border-purple-600'
+            };
+
+            return (
+              <div 
+                key={tile.id}
+                className={`
+                  relative flex flex-col items-center justify-center text-center p-2 rounded-lg border-2 transition-all
+                  ${isEarned ? earnedVariants[tile.type] : `${variants[tile.type]} text-stone-500 border-dashed`}
+                `}
+              >
+                {isEarned && (
+                  <div className="absolute top-1 right-1">
+                    {CheckCircle ? <CheckCircle size={14} className="text-white opacity-80" /> : <span>✓</span>}
+                  </div>
+                )}
+                <span className={`text-[10px] uppercase font-bold mb-1 opacity-70 ${!isEarned && 'text-stone-400'}`}>
+                  {tile.type}
+                </span>
+                <span className={`text-xs font-semibold leading-tight ${isEarned ? 'text-white' : 'text-stone-700'}`}>
+                  {tile.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    };
+
+    function DateBingoApp() {
+      const [activeTab, setActiveTab] = useState('dashboard');
+      const [ideas, setIdeas] = useState(() => {
+        const saved = localStorage.getItem('db_ideas');
+        return saved ? JSON.parse(saved) : INITIAL_IDEAS;
+      });
+      
+      const [plannedDate, setPlannedDate] = useState(() => {
+        const saved = localStorage.getItem('db_plannedDate');
+        return saved ? JSON.parse(saved) : null;
+      });
+
+      const [history, setHistory] = useState(() => {
+        const saved = localStorage.getItem('db_history');
+        return saved ? JSON.parse(saved) : [];
+      });
+
+      const [earnedTiles, setEarnedTiles] = useState(() => {
+        const saved = localStorage.getItem('db_bingo');
+        return saved ? JSON.parse(saved) : [];
+      });
+
+      const [suggestions, setSuggestions] = useState([]);
+      const [viewMode, setViewMode] = useState('admin');
+      
+      // Loading states for AI features
+      const [isGeneratingIdea, setIsGeneratingIdea] = useState(false);
+      const [isRewritingHint, setIsRewritingHint] = useState(false);
+      
+      const [completionForm, setCompletionForm] = useState({
+        touchRitual: false,
+        phonesAway: false,
+        laughed: false,
+        honestSentence: false,
+        newPlace: false,
+        notes: '',
+        rating: 3
+      });
+
+      useEffect(() => { localStorage.setItem('db_ideas', JSON.stringify(ideas)); }, [ideas]);
+      useEffect(() => { localStorage.setItem('db_plannedDate', JSON.stringify(plannedDate)); }, [plannedDate]);
+      useEffect(() => { localStorage.setItem('db_history', JSON.stringify(history)); }, [history]);
+      useEffect(() => { localStorage.setItem('db_bingo', JSON.stringify(earnedTiles)); }, [earnedTiles]);
+
+      useEffect(() => {
+        const handleHashChange = () => {
+          const hash = window.location.hash;
+          if (hash === '#hint') setViewMode('receiver-hint');
+          else if (hash === '#reveal') setViewMode('receiver-reveal');
+          else setViewMode('admin');
+        };
+        
+        window.addEventListener('hashchange', handleHashChange);
+        handleHashChange();
+        return () => window.removeEventListener('hashchange', handleHashChange);
+      }, []);
+
+      const handleSuggest3 = () => {
+        const shuffled = [...ideas].sort(() => 0.5 - Math.random());
+        setSuggestions(shuffled.slice(0, 3));
+        setActiveTab('planner');
+      };
+
+      const confirmPlan = (idea) => {
+        const newPlan = {
+          id: Date.now().toString(),
+          selectedIdeaId: idea.id,
+          ideaSnapshot: idea,
+          status: 'planned',
+          createdAt: new Date().toISOString(),
+          hint: {
+            teaserLine: "Get ready for something different.",
+            startTime: "19:00",
+            dressCode: "Smart Casual"
+          },
+          veto: null
+        };
+        setPlannedDate(newPlan);
+        setActiveTab('dashboard');
+        setSuggestions([]);
+      };
+
+      const handleVeto = (reason) => {
+        if (!plannedDate) return;
+        const updatedPlan = {
+          ...plannedDate,
+          status: 'vetoed',
+          veto: {
+            vetoedAt: new Date().toISOString(),
+            reasonTag: reason,
+            planBActivated: true
+          }
+        };
+        setPlannedDate(updatedPlan);
+      };
+
+      const handleMarkDone = () => {
+        if (!plannedDate) return;
+
+        const newTiles = [...earnedTiles];
+        const idea = plannedDate.ideaSnapshot;
+        const isPlanB = plannedDate.veto?.planBActivated;
+
+        const checkTile = (id, condition) => {
+          if (condition && !newTiles.includes(id)) newTiles.push(id);
+        };
+
+        checkTile('t1', idea.purposeTags.includes('passion') || completionForm.touchRitual);
+        checkTile('t2', idea.vibes.includes('outdoors') || idea.seasonTags.includes('summer_only'));
+        checkTile('t3', completionForm.phonesAway);
+        checkTile('t4', idea.purposeTags.includes('laugh') || completionForm.laughed);
+        checkTile('t5', idea.purposeTags.includes('talk') || completionForm.honestSentence);
+        checkTile('t6', idea.purposeTags.includes('novelty') || completionForm.newPlace);
+        checkTile('t7', idea.purposeTags.includes('anti_spiral') || (idea.energy === 'low' && !isPlanB));
+        checkTile('t8', true);
+        checkTile('t9', isPlanB);
+
+        const logEntry = {
+          ...plannedDate,
+          completedAt: new Date().toISOString(),
+          outcome: 'done',
+          notes: completionForm.notes,
+          rating: completionForm.rating
+        };
+
+        setHistory([logEntry, ...history]);
+        setEarnedTiles(newTiles);
+        setPlannedDate(null);
+        setCompletionForm({
+          touchRitual: false, phonesAway: false, laughed: false, 
+          honestSentence: false, newPlace: false, notes: '', rating: 3
+        });
+        setActiveTab('dashboard');
+      };
+
+      // --- GEMINI FUNCTIONS ---
+      
+      const handleGenerateIdea = async () => {
+        setIsGeneratingIdea(true);
+        const systemPrompt = "You are a creative date planner. Generate a unique, structured date idea including a 'Plan B' (low energy fallback). Return ONLY raw, valid JSON with no markdown formatting.";
+        const userPrompt = `Generate a JSON object for a date idea.
+        Structure:
+        { 
+          "id": "generated-${Date.now()}",
+          "title": "String", 
+          "shortDescription": "String", 
+          "vibes": ["String"], 
+          "purposeTags": ["String"], 
+          "energy": "low"|"med"|"high", 
+          "seasonTags": ["String"], 
+          "radius": "String", 
+          "duration": "String", 
+          "budget": "String", 
+          "prepChecklist": ["String"], 
+          "planB": { 
+            "title": "String", 
+            "shortDescription": "String", 
+            "steps": ["String"], 
+            "vibes": ["String"], 
+            "energy": "low" 
+          },
+          "cooldownDays": 30,
+          "lastDoneAt": null
+        }
+        Make it creative, romantic, or fun. Ensure specific activity details.`;
+
+        try {
+          let text = await callGemini(userPrompt, systemPrompt);
+          // Clean markdown code blocks if present
+          text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+          const newIdea = JSON.parse(text);
+          setIdeas([newIdea, ...ideas]);
+          alert("✨ New Idea Generated & Added to Deck!");
+        } catch (error) {
+          console.error("Gemini Error:", error);
+          alert("Failed to generate idea. Try again.");
+        } finally {
+          setIsGeneratingIdea(false);
+        }
+      };
+
+      const handleRewriteHint = async () => {
+        if (!plannedDate) return;
+        setIsRewritingHint(true);
+        const plan = plannedDate.ideaSnapshot;
+        const systemPrompt = "You are a romantic mystery writer. Write a short, exciting teaser for a date.";
+        const userPrompt = `Write a 1-sentence teaser for a date titled "${plan.title}". 
+        Description: ${plan.shortDescription}. 
+        Vibes: ${plan.vibes.join(', ')}.
+        Do not reveal the exact location or activity name, just hint at the feeling/atmosphere. Make it alluring.`;
+
+        try {
+          const newTeaser = await callGemini(userPrompt, systemPrompt);
+          setPlannedDate({
+            ...plannedDate,
+            hint: { ...plannedDate.hint, teaserLine: newTeaser.trim() }
+          });
+        } catch (error) {
+          console.error("Gemini Error:", error);
+          alert("Failed to rewrite hint.");
+        } finally {
+          setIsRewritingHint(false);
+        }
+      };
+
+      const copyLink = (type) => {
+        const url = `${window.location.origin}${window.location.pathname}#${type}`;
+        navigator.clipboard.writeText(url);
+        alert(`Simulated Link copied!\nIn a real app, you'd text this.\n\nFor this demo, open a new tab and paste it, or just click the "Preview Receiver" button.`);
+      };
+
+      if (viewMode.startsWith('receiver')) {
+        return <ReceiverView 
+          plannedDate={plannedDate} 
+          mode={viewMode === 'receiver-hint' ? 'hint' : 'reveal'} 
+          onVeto={handleVeto} 
+        />;
+      }
+
+      return (
+        <div className="min-h-screen bg-stone-50 text-stone-800 font-sans pb-20 md:pb-0">
+          <div className="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative">
+            <header className="px-6 py-4 border-b border-stone-100 flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur z-20">
+              <h1 className="text-xl font-serif font-bold text-stone-800 flex items-center gap-2">
+                {Heart ? <Heart size={20} className="text-rose-500 fill-rose-500" /> : <span>❤️</span>}
+                DateBingo
+              </h1>
+              <div className="text-xs font-medium text-stone-400">v1.1 AI</div>
+            </header>
+
+            <main className="p-6">
+              {activeTab === 'dashboard' && (
+                <div className="space-y-8 fade-in">
+                  <section>
+                    <div className="flex justify-between items-end mb-3">
+                      <h2 className="text-sm font-bold text-stone-400 uppercase tracking-wide">Next Planned Date</h2>
+                      {plannedDate && (
+                         <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
+                           {plannedDate.status === 'vetoed' ? 'Plan B Active' : 'Active'}
+                         </Badge>
+                      )}
+                    </div>
+
+                    {!plannedDate ? (
+                      <div className="border-2 border-dashed border-stone-200 rounded-xl p-8 text-center space-y-4">
+                        <div className="w-16 h-16 bg-stone-50 rounded-full flex items-center justify-center mx-auto text-stone-300">
+                          {Calendar ? <Calendar size={32} /> : <span>📅</span>}
+                        </div>
+                        <p className="text-stone-500">No date planned yet.</p>
+                        <Button onClick={handleSuggest3} className="w-full shadow-lg shadow-stone-200/50">
+                          Suggest 3 Ideas
+                        </Button>
+                      </div>
+                    ) : (
+                      <Card className="border-stone-200 bg-white shadow-sm">
+                        <div className="p-5 border-b border-stone-100">
+                           <h3 className="font-bold text-lg text-stone-800">
+                             {plannedDate.status === 'vetoed' ? plannedDate.ideaSnapshot.planB.title : plannedDate.ideaSnapshot.title}
+                           </h3>
+                           <p className="text-sm text-stone-500 mt-1 line-clamp-1">
+                            {plannedDate.status === 'vetoed' ? plannedDate.ideaSnapshot.planB.shortDescription : plannedDate.ideaSnapshot.shortDescription}
+                           </p>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 divide-x divide-stone-100 border-b border-stone-100">
+                          <div className="p-3 flex flex-col gap-2">
+                            <label className="text-[10px] uppercase font-bold text-stone-400">Current Teaser</label>
+                            <p className="text-xs text-stone-600 italic">"{plannedDate.hint.teaserLine}"</p>
+                            <button 
+                              onClick={handleRewriteHint}
+                              disabled={isRewritingHint}
+                              className="flex items-center gap-1 text-xs text-indigo-600 font-bold hover:text-indigo-800 disabled:opacity-50"
+                            >
+                              {isRewritingHint ? <span className="animate-spin">⌛</span> : (Sparkles ? <Sparkles size={12} /> : <span>✨</span>)}
+                              Rewrite Teaser
+                            </button>
+                          </div>
+                          <button 
+                            onClick={() => copyLink('hint')}
+                            className="p-3 text-sm font-medium text-stone-600 hover:bg-stone-50 flex flex-col items-center justify-center gap-1"
+                          >
+                            {Share2 ? <Share2 size={18} className="text-stone-400"/> : <span>↗️</span>}
+                            Copy Hint Link
+                          </button>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 divide-x divide-stone-100 border-b border-stone-100">
+                           <div className="bg-stone-50 p-2 text-center col-span-2">
+                             <p className="text-[10px] uppercase text-stone-400 font-bold mb-1">Demo Controls</p>
+                             <div className="flex gap-2 justify-center">
+                               <button onClick={() => setViewMode('receiver-hint')} className="text-xs bg-white border border-stone-200 px-2 py-1 rounded shadow-sm">Preview Hint</button>
+                               <button onClick={() => setViewMode('receiver-reveal')} className="text-xs bg-white border border-stone-200 px-2 py-1 rounded shadow-sm">Preview Reveal</button>
+                             </div>
+                           </div>
+                        </div>
+
+                        <div className="p-3">
+                          <Button onClick={() => setActiveTab('complete')} variant="success" className="w-full py-2 text-sm">
+                            {CheckCircle ? <CheckCircle size={16} /> : <span>✓</span>} Mark as Done
+                          </Button>
+                        </div>
+                      </Card>
+                    )}
+                  </section>
+
+                  <section>
+                     <div className="flex justify-between items-center mb-3">
+                      <h2 className="text-sm font-bold text-stone-400 uppercase tracking-wide">Bingo Progress</h2>
+                      <span className="text-xs font-medium text-stone-500">{earnedTiles.length}/9 Tiles</span>
+                    </div>
+                    <BingoBoard earnedTiles={earnedTiles} />
+                  </section>
+
+                  <section>
+                    <h2 className="text-sm font-bold text-stone-400 uppercase tracking-wide mb-3">Recent History</h2>
+                    {history.length === 0 ? (
+                      <p className="text-sm text-stone-400 italic">No dates completed yet.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {history.slice(0, 3).map((h, i) => (
+                          <div key={i} className="flex gap-3 items-start p-3 bg-white rounded-lg border border-stone-100">
+                            <div className={`mt-1 w-2 h-2 rounded-full ${h.didPlanB ? 'bg-yellow-400' : 'bg-emerald-400'}`} />
+                            <div>
+                              <div className="font-medium text-sm text-stone-800">{h.ideaSnapshot.title}</div>
+                              <div className="text-xs text-stone-500">
+                                {new Date(h.completedAt).toLocaleDateString()} • {h.rating}/5
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+
+                </div>
+              )}
+
+              {activeTab === 'planner' && (
+                <div className="space-y-4 fade-in pb-20">
+                  <div className="flex items-center gap-2 mb-4">
+                    <button onClick={() => setActiveTab('dashboard')} className="p-2 hover:bg-stone-100 rounded-full">
+                      {ArrowLeft ? <ArrowLeft size={20} /> : <span>←</span>}
+                    </button>
+                    <h2 className="text-lg font-bold">Choose Plan A</h2>
+                  </div>
+                  
+                  <p className="text-sm text-stone-500 mb-4">
+                    We've picked 3 ideas based on your deck. Select one to lock it in. 
+                    Remember, if she vetoes, the Plan B is automatic.
+                  </p>
+
+                  <div className="space-y-4">
+                    {suggestions.map(idea => (
+                      <div key={idea.id} className="relative group">
+                        <IdeaCard idea={idea} />
+                        <div className="mt-2">
+                           <Button onClick={() => confirmPlan(idea)} className="w-full">Select This Idea</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <Button variant="ghost" onClick={handleSuggest3} className="w-full mt-4">
+                    {RefreshCw ? <RefreshCw size={16} /> : <span>↻</span>} Shuffle Ideas
+                  </Button>
+                </div>
+              )}
+
+              {activeTab === 'complete' && (
+                <div className="space-y-6 fade-in">
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setActiveTab('dashboard')} className="p-2 hover:bg-stone-100 rounded-full">
+                      {ArrowLeft ? <ArrowLeft size={20} /> : <span>←</span>}
+                    </button>
+                    <h2 className="text-lg font-bold">Wrap Up Date</h2>
+                  </div>
+
+                  <div className="bg-stone-50 p-4 rounded-lg border border-stone-200">
+                    <h3 className="font-semibold text-stone-700 mb-2">Did you do these?</h3>
+                    <p className="text-xs text-stone-500 mb-4">Check boxes to earn extra bingo tiles.</p>
+                    
+                    <div className="space-y-3">
+                      {[
+                        ['Touch ritual done', 'touchRitual'],
+                        ['Phones away 60 min', 'phonesAway'],
+                        ['We laughed', 'laughed'],
+                        ['One honest sentence', 'honestSentence'],
+                        ['New place/activity', 'newPlace'],
+                      ].map(([label, key]) => (
+                        <label key={key} className="flex items-center gap-3 p-3 bg-white rounded border border-stone-200 cursor-pointer select-none">
+                          <input 
+                            type="checkbox" 
+                            checked={completionForm[key]}
+                            onChange={(e) => setCompletionForm({...completionForm, [key]: e.target.checked})}
+                            className="w-5 h-5 text-stone-800 rounded focus:ring-stone-500 border-stone-300" 
+                          />
+                          <span className="text-sm font-medium text-stone-700">{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-stone-700 mb-1">Quick Note</label>
+                    <textarea 
+                      className="w-full p-3 rounded-lg border border-stone-200 text-sm focus:ring-2 focus:ring-stone-800 focus:outline-none"
+                      rows={3}
+                      placeholder="Memorable moment..."
+                      value={completionForm.notes}
+                      onChange={e => setCompletionForm({...completionForm, notes: e.target.value})}
+                    />
+                  </div>
+
+                  <Button onClick={handleMarkDone} className="w-full">Complete & Update Bingo</Button>
+                </div>
+              )}
+
+              {activeTab === 'deck' && (
+                <div className="space-y-4 fade-in">
+                  <div className="flex items-center justify-between mb-4">
+                     <h2 className="text-xl font-bold">Idea Deck ({ideas.length})</h2>
+                     <Button 
+                        variant="magic" 
+                        className="px-3 py-2 text-xs"
+                        onClick={handleGenerateIdea}
+                        disabled={isGeneratingIdea}
+                     >
+                        {isGeneratingIdea ? (
+                          <span className="flex items-center gap-2">Creating...</span>
+                        ) : (
+                          <span className="flex items-center gap-2">
+                             {Wand2 ? <Wand2 size={14} /> : <span>✨</span>} AI Idea
+                          </span>
+                        )}
+                     </Button>
+                  </div>
+
+                  {isGeneratingIdea && (
+                    <div className="p-4 rounded-xl shimmer border border-stone-200 mb-4">
+                      <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                      <div className="h-3 bg-gray-200 rounded w-full mb-1"></div>
+                      <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                    </div>
+                  )}
+
+                  {ideas.map(idea => (
+                    <IdeaCard key={idea.id} idea={idea} />
+                  ))}
+                  
+                  <div className="p-8 text-center text-stone-400 text-sm border-2 border-dashed border-stone-200 rounded-xl">
+                     + Add Manual Idea (Not in MVP Demo)
+                  </div>
+                </div>
+              )}
+            </main>
+
+            <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 flex justify-around p-2 max-w-md mx-auto z-20">
+              <button 
+                onClick={() => setActiveTab('dashboard')}
+                className={`p-2 rounded-lg flex flex-col items-center gap-1 text-[10px] font-bold uppercase ${activeTab === 'dashboard' ? 'text-stone-800 bg-stone-50' : 'text-stone-400'}`}
+              >
+                {Calendar ? <Calendar size={20} /> : <span>📅</span>}
+                Plan
+              </button>
+               <button 
+                onClick={() => setActiveTab('deck')}
+                className={`p-2 rounded-lg flex flex-col items-center gap-1 text-[10px] font-bold uppercase ${activeTab === 'deck' ? 'text-stone-800 bg-stone-50' : 'text-stone-400'}`}
+              >
+                {Shuffle ? <Shuffle size={20} /> : <span>🔀</span>}
+                Deck
+              </button>
+              <button 
+                className={`p-2 rounded-lg flex flex-col items-center gap-1 text-[10px] font-bold uppercase text-stone-300 cursor-not-allowed`}
+              >
+                {MessageCircle ? <MessageCircle size={20} /> : <span>💬</span>}
+                History
+              </button>
+            </nav>
+
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<DateBingoApp />);
+  </script>
+</body>
+</html>
