@@ -4,13 +4,14 @@ import { requireAuth } from '../middleware/auth.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { getUploadDir } from '../utils/uploads.js';
 
 const router = Router();
 
 // Configure Multer
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'data/uploads'); // Use process.cwd() for reliable path in Docker
+    const uploadDir = getUploadDir();
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }

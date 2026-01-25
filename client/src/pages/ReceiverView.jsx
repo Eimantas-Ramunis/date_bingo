@@ -10,6 +10,9 @@ export default function ReceiverView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [vetoing, setVetoing] = useState(false);
+  const [energyLevel, setEnergyLevel] = useState(null);
+  const [showOtherReason, setShowOtherReason] = useState(false);
+  const [otherReason, setOtherReason] = useState('');
 
   const fetchData = async () => {
     if (!token) {
@@ -23,8 +26,14 @@ export default function ReceiverView() {
       const res = await api.get('/receiver', { params: { token } });
       setData(res.data);
       setError('');
+      setEnergyLevel(null);
     } catch (err) {
-      const message = err.response?.data?.error || 'Nepavyko įkelti informacijos.';
+      const code = err.response?.data?.error;
+      const message = code === 'Invalid token'
+        ? 'Netinkama nuoroda. Paprašykite naujos.'
+        : code?.includes('expired')
+          ? 'Ši nuoroda nebegalioja. Paprašykite naujos.'
+          : 'Nepavyko įkelti informacijos.';
       setError(message);
     } finally {
       setLoading(false);
@@ -58,10 +67,25 @@ export default function ReceiverView() {
 
   if (!data) return null;
 
-  const { type, hint, reveal, status, planBActive } = data;
+  const { type, hint, reveal, status, planBActive, bingoTiles } = data;
   const isVetoed = status === 'VETOED' || planBActive;
   const planBSteps = reveal?.planB?.steps || [];
   const planASteps = reveal?.planA?.steps || [];
+  const showPlanB = isVetoed || energyLevel === 'low';
+
+  const handleEnergySelect = async (level) => {
+    setEnergyLevel(level);
+    if (level === 'low') {
+      await handleVeto('low energy');
+    }
+  };
+
+  const submitOtherReason = async (forceEmpty = false) => {
+    const reason = forceEmpty ? '' : otherReason;
+    setShowOtherReason(false);
+    setOtherReason('');
+    await handleVeto(reason);
+  };
 
   if (type === 'HINT') {
     return (
@@ -104,8 +128,48 @@ export default function ReceiverView() {
     );
   }
 
+  if (type === 'BINGO') {
+    const tiles = bingoTiles || [];
+    const earnedIds = new Set(tiles.map(tile => tile.id));
+    const BINGO_TILES = [
+      { id: 't1', label: 'Prisiglaudėme' },
+      { id: 't2', label: 'Diena lauke' },
+      { id: 't3', label: 'Be telefono valandos' },
+      { id: 't4', label: 'Juokėmės' },
+      { id: 't5', label: 'Nebuvome kambariokai' },
+      { id: 't6', label: 'Kažkas naujo' },
+      { id: 't7', label: 'Šilta ir saugu' },
+      { id: 't8', label: 'Tu suplanavai' },
+      { id: 't9', label: 'Plan B išgelbėjo' }
+    ];
+
+    return (
+      <div className="min-h-screen bg-stone-50 p-6 flex flex-col items-center justify-center">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-6">
+            <h1 className="font-serif text-2xl font-bold text-stone-800">Bingo korta</h1>
+            <p className="text-sm text-stone-500 mt-1">Bendri prisiminimai</p>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {BINGO_TILES.map(tile => {
+              const earned = earnedIds.has(tile.id);
+              return (
+                <div
+                  key={tile.id}
+                  className={`aspect-square flex flex-col items-center justify-center p-2 text-center rounded-lg border-2 transition-all ${earned ? 'bg-emerald-500 text-white border-emerald-600 shadow-lg scale-105' : 'bg-white text-stone-400 border-dashed border-stone-200'}`}
+                >
+                  <span className="font-bold text-sm leading-tight">{tile.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (type === 'REVEAL' || isVetoed) {
-    if (isVetoed) {
+    if (showPlanB) {
       return (
         <div className="min-h-screen bg-stone-50 p-6 flex flex-col items-center justify-center">
           <div className="max-w-md w-full bg-white rounded-xl shadow-lg border-2 border-emerald-100 p-6">
@@ -128,7 +192,7 @@ export default function ReceiverView() {
             </div>
 
             <div className="text-center text-xs text-stone-400">
-              Originalus planas ({reveal?.planA_summary || 'Planas A'}) atidėtas kitam kartui.
+              Originalus planas ({reveal?.planA_summary || reveal?.planA?.title || 'Planas A'}) atidėtas kitam kartui.
             </div>
           </div>
         </div>
@@ -140,7 +204,7 @@ export default function ReceiverView() {
         <div className="max-w-md mx-auto bg-white rounded-xl shadow-xl overflow-hidden">
           {reveal?.planA?.image ? (
             <div className="h-48 w-full bg-stone-200">
-              <img src={`/uploads/${reveal.planA.image}`} alt="Date" className="w-full h-full object-cover" />
+              <img src={`/uploads/${reveal.planA.image}`} alt="Pasimatymas" className="w-full h-full object-cover" />
             </div>
           ) : (
             <div className="h-2 bg-stone-800" />
@@ -173,21 +237,87 @@ export default function ReceiverView() {
           </div>
         </div>
 
-        <div className="max-w-md mx-auto mt-8 text-center space-y-4">
-          <p className="text-sm text-stone-400">Šiandien nelabai?</p>
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => handleVeto('tired')} disabled={vetoing} className="p-2 border bg-white rounded text-xs hover:bg-red-50 text-stone-600">
-              Pavargusi
+        <div className="max-w-md mx-auto mt-8 space-y-6">
+          <div className="bg-white rounded-xl border border-stone-200 p-4 text-center">
+            <p className="text-sm text-stone-500 mb-3">Kaip tavo energija?</p>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => handleEnergySelect('low')}
+                className={`p-2 rounded text-xs border ${energyLevel === 'low' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-stone-50 text-stone-600'}`}
+              >
+                Žema
+              </button>
+              <button
+                onClick={() => handleEnergySelect('medium')}
+                className={`p-2 rounded text-xs border ${energyLevel === 'medium' ? 'bg-stone-800 text-white border-stone-800' : 'bg-stone-50 text-stone-600'}`}
+              >
+                Vidutinė
+              </button>
+              <button
+                onClick={() => handleEnergySelect('high')}
+                className={`p-2 rounded text-xs border ${energyLevel === 'high' ? 'bg-amber-500 text-white border-amber-500' : 'bg-stone-50 text-stone-600'}`}
+              >
+                Aukšta
+              </button>
+            </div>
+            {energyLevel === 'low' && (
+              <p className="text-xs text-stone-500 mt-3">Automatiškai persijungiame į Planą B.</p>
+            )}
+            {energyLevel === 'high' && (
+              <div className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded p-2">
+                Papildomas prieskonis: įtraukite mažą staigmeną susijusią su "{reveal?.planA?.title || 'Planu'}".
+              </div>
+            )}
+          </div>
+
+          <div className="text-center space-y-2">
+            <p className="text-sm text-stone-400">Šiandien nelabai?</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => handleVeto('tired')} disabled={vetoing} className="p-2 border bg-white rounded text-xs hover:bg-red-50 text-stone-600">
+                Pavargusi
+              </button>
+              <button onClick={() => handleVeto('weather')} disabled={vetoing} className="p-2 border bg-white rounded text-xs hover:bg-red-50 text-stone-600">
+                Per šalta/šlapia
+              </button>
+              <button onClick={() => handleVeto('social')} disabled={vetoing} className="p-2 border bg-white rounded text-xs hover:bg-red-50 text-stone-600">
+                Nenoriu žmonių
+              </button>
+              <button onClick={() => handleVeto('generic')} disabled={vetoing} className="p-2 border bg-white rounded text-xs hover:bg-red-50 text-stone-600">
+                Šiandien ne
+              </button>
+            </div>
+            <button
+              onClick={() => setShowOtherReason(true)}
+              disabled={vetoing}
+              className="w-full p-2 border bg-white rounded text-xs hover:bg-stone-100 text-stone-600"
+            >
+              Kita priežastis
             </button>
-            <button onClick={() => handleVeto('weather')} disabled={vetoing} className="p-2 border bg-white rounded text-xs hover:bg-red-50 text-stone-600">
-              Per šalta/šlapia
-            </button>
-            <button onClick={() => handleVeto('social')} disabled={vetoing} className="p-2 border bg-white rounded text-xs hover:bg-red-50 text-stone-600">
-              Nenoriu žmonių
-            </button>
-            <button onClick={() => handleVeto('generic')} disabled={vetoing} className="p-2 border bg-white rounded text-xs hover:bg-red-50 text-stone-600">
-              Šiandien ne
-            </button>
+            {showOtherReason && (
+              <div className="mt-3 bg-white border rounded-lg p-3 text-left space-y-2">
+                <label className="text-xs text-stone-500">Trumpai parašykite priežastį (nebūtina)</label>
+                <textarea
+                  rows={3}
+                  className="w-full border rounded p-2 text-sm"
+                  value={otherReason}
+                  onChange={e => setOtherReason(e.target.value)}
+                />
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => submitOtherReason(true)}
+                    className="text-xs text-stone-500"
+                  >
+                    Uždaryti
+                  </button>
+                  <button
+                    onClick={() => submitOtherReason(false)}
+                    className="text-xs bg-stone-800 text-white px-3 py-1 rounded"
+                  >
+                    Patvirtinti
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

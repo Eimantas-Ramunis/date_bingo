@@ -162,6 +162,8 @@ function PlanningForm({ idea, onCancel, onSuccess }) {
   });
   const [loading, setLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [showHintPreview, setShowHintPreview] = useState(false);
+  const [showRevealPreview, setShowRevealPreview] = useState(false);
 
   const generateTeaser = async () => {
     setAiLoading(true);
@@ -216,10 +218,65 @@ function PlanningForm({ idea, onCancel, onSuccess }) {
         </div>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex flex-wrap gap-3">
         <button onClick={onCancel} className="px-4 py-2 border rounded hover:bg-stone-50">Cancel</button>
         <button onClick={submit} disabled={loading} className="px-4 py-2 bg-stone-800 text-white rounded hover:bg-stone-700">Confirm Plan</button>
+        <button onClick={() => setShowHintPreview(!showHintPreview)} className="px-4 py-2 border rounded hover:bg-stone-50">
+          Peržiūrėti užuominą
+        </button>
+        <button onClick={() => setShowRevealPreview(!showRevealPreview)} className="px-4 py-2 border rounded hover:bg-stone-50">
+          Peržiūrėti atskleidimą
+        </button>
       </div>
+
+      {(showHintPreview || showRevealPreview) && (
+        <div className="mt-8 grid md:grid-cols-2 gap-6">
+          {showHintPreview && (
+            <div className="bg-stone-50 rounded-xl p-4 border border-stone-200">
+              <div className="bg-stone-800 text-white text-center rounded-lg py-3 mb-4">
+                <h3 className="font-serif text-lg font-bold">Rytojaus Pasimatymas</h3>
+                <p className="text-stone-300 text-xs">Maža užuomina...</p>
+              </div>
+              <div className="text-center mb-4">
+                <p className="italic text-stone-700">"{form.hintTeaser || '...'}"</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-white rounded p-2 border">
+                  <div className="text-xs text-stone-400">Pradžia</div>
+                  <div className="font-semibold">{form.hintStartTime}</div>
+                </div>
+                <div className="bg-white rounded p-2 border">
+                  <div className="text-xs text-stone-400">Apranga</div>
+                  <div className="font-semibold">{form.hintDressCode}</div>
+                </div>
+              </div>
+              <div className="text-center mt-4">
+                <span className="text-xs text-stone-500 bg-white border rounded-full px-3 py-1">{form.hintDuration}</span>
+              </div>
+            </div>
+          )}
+
+          {showRevealPreview && (
+            <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
+              {idea.image ? (
+                <div className="h-32 bg-stone-200">
+                  <img src={`/uploads/${idea.image}`} alt={idea.title} className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="h-2 bg-stone-800" />
+              )}
+              <div className="p-4">
+                <h3 className="font-serif text-xl font-bold text-stone-900">{idea.title}</h3>
+                <p className="text-sm text-stone-600 mb-3">{idea.shortDescription}</p>
+                <div className="flex gap-4 text-xs text-stone-500">
+                  <div>{idea.duration}</div>
+                  <div>{idea.radius}</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -228,6 +285,7 @@ function ActivePlanView({ plan, refresh }) {
   const [links, setLinks] = useState({ hint: '', reveal: '' });
   const [completing, setCompleting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [previewLinks, setPreviewLinks] = useState({ hint: '', reveal: '' });
 
   const generateLink = async (type) => {
     const res = await api.post('/planning/token', { plannedDateId: plan.id, type });
@@ -236,6 +294,25 @@ function ActivePlanView({ plan, refresh }) {
     navigator.clipboard.writeText(url);
     alert('Link copied to clipboard!');
   };
+
+  const loadPreviews = async () => {
+    try {
+      const [hintRes, revealRes] = await Promise.all([
+        api.post('/planning/preview-token', { plannedDateId: plan.id, type: 'HINT' }),
+        api.post('/planning/preview-token', { plannedDateId: plan.id, type: 'REVEAL' })
+      ]);
+      setPreviewLinks({
+        hint: `${window.location.origin}/r?token=${hintRes.data.token}`,
+        reveal: `${window.location.origin}/r?token=${revealRes.data.token}`
+      });
+    } catch (e) {
+      alert('Failed to load previews');
+    }
+  };
+
+  useEffect(() => {
+    loadPreviews();
+  }, [plan.id]);
 
   const cancelPlan = async () => {
     if (!confirm('Cancel this plan? Links will stop working.')) return;
@@ -263,7 +340,7 @@ function ActivePlanView({ plan, refresh }) {
             {plan.planBActive && <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full uppercase font-bold">Plan B Active</span>}
           </div>
           <h2 className="text-3xl font-serif font-bold">{plan.idea.title}</h2>
-          {plan.status === 'VETOED' && (
+          {plan.status === 'VETOED' && plan.vetoReason && (
              <div className="mt-2 text-red-600 font-medium">
                Veto Reason: <span className="italic">"{plan.vetoReason}"</span>
              </div>
@@ -301,6 +378,38 @@ function ActivePlanView({ plan, refresh }) {
                     Generate & Copy
                   </button>
                </div>
+               <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">Bingo Link</div>
+                    <div className="text-xs text-stone-500">Share board</div>
+                  </div>
+                  <button onClick={() => generateLink('BINGO')} className="text-sm bg-stone-100 px-3 py-1 rounded hover:bg-stone-200">
+                    Generate & Copy
+                  </button>
+               </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 space-y-4">
+              <div className="flex items-center justify-between border-b pb-2">
+                <h3 className="font-bold">Preview Cards</h3>
+                <button onClick={loadPreviews} className="text-xs text-stone-400 hover:text-stone-700">Refresh</button>
+              </div>
+              <div className="grid gap-4">
+                <div className="border rounded-lg overflow-hidden">
+                  {previewLinks.hint ? (
+                    <iframe title="Hint preview" src={previewLinks.hint} className="w-full h-72" />
+                  ) : (
+                    <div className="p-4 text-sm text-stone-400">Hint preview loading...</div>
+                  )}
+                </div>
+                <div className="border rounded-lg overflow-hidden">
+                  {previewLinks.reveal ? (
+                    <iframe title="Reveal preview" src={previewLinks.reveal} className="w-full h-72" />
+                  ) : (
+                    <div className="p-4 text-sm text-stone-400">Reveal preview loading...</div>
+                  )}
+                </div>
+              </div>
             </div>
 
             {plan.planBActive && (
@@ -731,5 +840,50 @@ function BingoTab() {
 }
 
 function HistoryTab() {
-  return <div className="text-center text-stone-400 mt-10">History feature coming soon (Events are logged in DB).</div>;
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/planning/history')
+      .then(res => setHistory(res.data))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <div className="text-center text-stone-400 mt-10">Kraunama istorija...</div>;
+  }
+
+  if (history.length === 0) {
+    return <div className="text-center text-stone-400 mt-10">Kol kas istorijos nėra.</div>;
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-4">
+      <h2 className="text-2xl font-bold font-serif text-stone-800 mb-4">Istorija</h2>
+      {history.map(plan => (
+        <div key={plan.id} className="bg-white rounded-xl border border-stone-200 p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="font-bold text-lg">{plan.idea?.title}</h3>
+              <p className="text-sm text-stone-500">{plan.idea?.shortDescription}</p>
+            </div>
+            <div className="text-sm text-stone-400">
+              {plan.completedAt ? new Date(plan.completedAt).toLocaleDateString() : '—'}
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-3 text-xs text-stone-500">
+            <span className="bg-stone-100 px-2 py-1 rounded">Įvertinimas: {plan.rating || '—'}</span>
+            <span className="bg-stone-100 px-2 py-1 rounded">Energija: {plan.idea?.energy || '—'}</span>
+            <span className="bg-stone-100 px-2 py-1 rounded">Trukmė: {plan.idea?.duration || '—'}</span>
+            <span className="bg-stone-100 px-2 py-1 rounded">Vieta: {plan.idea?.radius || '—'}</span>
+          </div>
+          {plan.notes && (
+            <div className="mt-3 text-sm text-stone-600">
+              Pastabos: {plan.notes}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }

@@ -1,5 +1,8 @@
+import { GoogleGenAI } from '@google/genai';
+
 const API_KEY = process.env.GEMINI_API_KEY;
-const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+const ai = new GoogleGenAI(API_KEY ? { apiKey: API_KEY } : {});
 
 const fallbackIdeas = [
   {
@@ -44,39 +47,35 @@ const fallbackIdeas = [
 
 const pickFallbackIdea = () => fallbackIdeas[Math.floor(Math.random() * fallbackIdeas.length)];
 
-async function callGemini(prompt, systemInstruction, isJson = false) {
-  if (!API_KEY) throw new Error("GEMINI_API_KEY not set");
+async function generateContent({ prompt, systemInstruction, responseMimeType, responseJsonSchema }) {
+  if (!API_KEY) throw new Error('GEMINI_API_KEY not set');
 
   try {
-    const response = await fetch(`${API_URL}?key=${API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        systemInstruction: { parts: [{ text: systemInstruction }] }
-      })
+    const response = await ai.models.generateContent({
+      model: MODEL,
+      contents: prompt,
+      config: {
+        systemInstruction,
+        responseMimeType,
+        responseJsonSchema
+      }
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        console.warn("Gemini Quota Exceeded. Returning fallback.");
-        return isJson ? "{}" : "AI unavailable (Quota).";
-      }
-      const err = await response.text();
-      throw new Error(`Gemini API Error: ${err}`);
-    }
-
-    const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    return response.text || '';
   } catch (error) {
-    console.error("AI Service Error:", error.message);
-    return isJson ? "{}" : "AI generation failed.";
+    const status = error?.status || error?.response?.status;
+    if (status === 429) {
+      console.warn('Gemini quota exceeded. Returning fallback.');
+      return '';
+    }
+    console.error('AI Service Error:', error.message);
+    return '';
   }
 }
 
 export const generateIdeaDraft = async () => {
-  const systemPrompt = "You are a creative date planner. Generate a unique, structured date idea including a 'Plan B' (low energy fallback). Return ONLY raw, valid JSON with no markdown formatting.";
-  const userPrompt = `Generate a JSON object for a date idea.
+  const systemPrompt = "Tu esi kūrybingas pasimatymų planuotojas. Generuok unikalią pasimatymo idėją su Plan B. Viską rašyk lietuviškai. Naudok metrinius matavimo vienetus (km, m, min, val.). Grąžink TIK galiojantį JSON be markdown.";
+  const userPrompt = `Sugeneruok JSON objektą pasimatymo idėjai.
         Structure:
         { 
           "title": "String", 
@@ -97,9 +96,42 @@ export const generateIdeaDraft = async () => {
             "energy": "low" 
           }
         }
-        Make it creative, romantic, or fun. Ensure specific activity details.`;
+        Rašyk lietuviškai. Naudok metrinius vienetus (pvz., "2 km", "45 min"). Aprašymas turi būti konkretus.`;
 
-  let text = await callGemini(userPrompt, systemPrompt, true);
+  const schema = {
+    type: 'object',
+    properties: {
+      title: { type: 'string' },
+      shortDescription: { type: 'string' },
+      vibes: { type: 'array', items: { type: 'string' } },
+      purposeTags: { type: 'array', items: { type: 'string' } },
+      energy: { type: 'string' },
+      seasonTags: { type: 'array', items: { type: 'string' } },
+      radius: { type: 'string' },
+      duration: { type: 'string' },
+      budget: { type: 'string' },
+      prepChecklist: { type: 'array', items: { type: 'string' } },
+      planB: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          description: { type: 'string' },
+          steps: { type: 'array', items: { type: 'string' } },
+          vibes: { type: 'array', items: { type: 'string' } },
+          energy: { type: 'string' }
+        },
+        required: ['title', 'description', 'steps']
+      }
+    },
+    required: ['title', 'shortDescription', 'vibes', 'purposeTags', 'energy', 'seasonTags', 'radius', 'duration', 'budget', 'prepChecklist', 'planB']
+  };
+
+  let text = await generateContent({
+    prompt: userPrompt,
+    systemInstruction: systemPrompt,
+    responseMimeType: 'application/json',
+    responseJsonSchema: schema
+  });
   text = text.replace(/```json/g, '').replace(/```/g, '').trim();
   try {
     const parsed = JSON.parse(text);
@@ -115,15 +147,28 @@ export const generateIdeaDraft = async () => {
 
 export const rewriteHintTeaser = async (idea) => {
   const systemPrompt = "You are a romantic mystery writer. Write a short, exciting teaser for a date in Lithuanian (LT).";
-  const userPrompt = `Write a 1-sentence teaser in Lithuanian for a date titled "${idea.title}". 
-        Description: ${idea.shortDescription}. 
+  const userPrompt = `Write a 1-2 sentence teaser in Lithuanian for a date.
+        Title: "${idea.title}".
+        Description: ${idea.shortDescription}.
         Vibes: ${idea.vibes}.
-        Do not reveal the exact location or activity name, just hint at the feeling/atmosphere. Make it alluring.`;
+        Area: ${idea.radius}.
+        Duration: ${idea.duration}.
+        Energy: ${idea.energy}.
+        Avoid naming the exact activity or location, hint at the atmosphere instead.
+        Make it distinct and specific to this idea.`;
   
-  const text = await callGemini(userPrompt, systemPrompt);
+  const text = await generateContent({
+    prompt: userPrompt,
+    systemInstruction: systemPrompt
+  });
   const trimmed = text.trim();
+  const fallbackTeasers = [
+    `Rytoj jūsų laukia šiltas, mažas nuotykis apie "${idea.title}".`,
+    `Pasiruošk vakaro staigmenai — kažkas subtilaus ir jaukaus apie "${idea.title}".`,
+    `Švelni užuomina: "${idea.title}" bus kupinas jausmo, bet detales paliksiu rytojui.`
+  ];
   if (!trimmed || trimmed.includes('AI unavailable') || trimmed.includes('AI generation failed')) {
-    return 'Rytoj laukia maža staigmena — pasiruošk nuotykiui.';
+    return fallbackTeasers[Math.floor(Math.random() * fallbackTeasers.length)];
   }
   return trimmed;
 };
