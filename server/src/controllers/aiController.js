@@ -14,10 +14,11 @@ export const rewriteTeaser = async (req, res, next) => {
     const idea = await prisma.dateIdea.findUnique({ where: { id: ideaId } });
     if (!idea) return res.status(404).json({ error: 'Idea not found' });
     
-    // Parse if string
     const parsedIdea = {
-        ...idea,
-        vibes: typeof idea.vibes === 'string' ? idea.vibes : JSON.stringify(idea.vibes)
+      ...idea,
+      vibes: typeof idea.vibes === 'string' ? idea.vibes : JSON.stringify(idea.vibes),
+      purposeTags: typeof idea.purposeTags === 'string' ? idea.purposeTags : JSON.stringify(idea.purposeTags),
+      seasonTags: typeof idea.seasonTags === 'string' ? idea.seasonTags : JSON.stringify(idea.seasonTags)
     };
 
     const teaser = await aiService.rewriteHintTeaser(parsedIdea);

@@ -65,6 +65,30 @@ export const getCurrentPlan = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+export const getHistory = async (req, res, next) => {
+  try {
+    const history = await prisma.plannedDate.findMany({
+      where: { status: 'DONE' },
+      orderBy: { completedAt: 'desc' },
+      include: { idea: true }
+    });
+
+    const formatted = history.map(plan => ({
+      ...plan,
+      planASteps: parseJson(plan.planASteps, []),
+      planBSteps: parseJson(plan.planBSteps, []),
+      idea: {
+        ...plan.idea,
+        vibes: parseJson(plan.idea.vibes, []),
+        purposeTags: parseJson(plan.idea.purposeTags, []),
+        planB: parseJson(plan.idea.planB, {})
+      }
+    }));
+
+    res.json(formatted);
+  } catch (err) { next(err); }
+};
+
 // Action: Select Idea (Create Plan)
 export const selectIdea = async (req, res, next) => {
   try {
@@ -119,7 +143,11 @@ export const cancelPlan = async (req, res, next) => {
 // Action: Generate Token
 export const generateToken = async (req, res, next) => {
   try {
-    const { plannedDateId, type } = req.body; // type: 'HINT' | 'REVEAL'
+    const { plannedDateId, type } = req.body; // type: 'HINT' | 'REVEAL' | 'BINGO'
+    const allowedTypes = ['HINT', 'REVEAL', 'BINGO'];
+    if (!allowedTypes.includes(type)) {
+      return res.status(400).json({ error: 'Invalid token type' });
+    }
     
     // Revoke old tokens of same type
     await prisma.token.updateMany({
@@ -131,7 +159,7 @@ export const generateToken = async (req, res, next) => {
     const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
     
     // TTL
-    const hours = type === 'HINT' ? 72 : 72; // Configurable
+    const hours = type === 'BINGO' ? 168 : 72; // Configurable
     const expiry = new Date();
     expiry.setHours(expiry.getHours() + hours);
 
@@ -145,6 +173,36 @@ export const generateToken = async (req, res, next) => {
     });
     
     // Return RAW token to Admin (one time view)
+    res.json({ token: rawToken, type, expiry });
+  } catch (err) { next(err); }
+};
+
+export const generatePreviewToken = async (req, res, next) => {
+  try {
+    const { plannedDateId, type } = req.body;
+    const allowedTypes = ['HINT', 'REVEAL'];
+    if (!allowedTypes.includes(type)) {
+      return res.status(400).json({ error: 'Invalid preview type' });
+    }
+
+    const plan = await prisma.plannedDate.findUnique({ where: { id: plannedDateId } });
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    const expiry = new Date();
+    expiry.setHours(expiry.getHours() + 2);
+
+    await prisma.token.create({
+      data: {
+        hash,
+        type,
+        expiry,
+        plannedDateId
+      }
+    });
+
     res.json({ token: rawToken, type, expiry });
   } catch (err) { next(err); }
 };

@@ -14,13 +14,14 @@ import bingoRoutes from './routes/bingo.routes.js';
 import aiRoutes from './routes/ai.routes.js';
 import { globalLimiter } from './middleware/rateLimiter.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { getUploadDir } from './utils/uploads.js';
 import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Ensure uploads directory exists
-const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '../../data/uploads');
+const uploadDir = getUploadDir();
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }

@@ -61,9 +61,22 @@ export const viewDate = async (req, res, next) => {
             energy: idea.energy,
             image: idea.image, // Include image
             steps: JSON.parse(plan.planASteps || '[]')
+          },
+          planB: {
+            title: plan.planBTitle,
+            description: plan.planBDesc,
+            steps: JSON.parse(plan.planBSteps || '[]')
           }
         };
       }
+    }
+
+    if (tokenRecord.type === 'BINGO') {
+      const tiles = await prisma.bingoTile.findMany();
+      response.bingoTiles = tiles.map(tile => ({
+        id: tile.id,
+        earnedAt: tile.earnedAt
+      }));
     }
 
     res.json(response);
@@ -84,12 +97,14 @@ export const vetoDate = async (req, res, next) => {
     // Allow veto only on Reveal? Or Hint too? "Veto button on Reveal only" per prompt.
     // We'll enforce this via UI mostly, but logical check is good.
     
+    const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+
     await prisma.plannedDate.update({
       where: { id: tokenRecord.plannedDateId },
       data: {
         status: 'VETOED',
         planBActive: true,
-        vetoReason: reason
+        vetoReason: trimmedReason || null
       }
     });
 
