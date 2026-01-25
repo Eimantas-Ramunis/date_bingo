@@ -1,6 +1,49 @@
 const API_KEY = process.env.GEMINI_API_KEY;
 const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
 
+const fallbackIdeas = [
+  {
+    title: 'Vakaro pasivaikščiojimas ir arbata',
+    shortDescription: 'Ramus pasivaikščiojimas mėgstamame rajone, po to jaukus arbatos vakaras namuose.',
+    vibes: ['calm', 'warm'],
+    purposeTags: ['talk', 'anti_spiral'],
+    energy: 'low',
+    seasonTags: ['any'],
+    radius: 'Neighborhood',
+    duration: '2h',
+    budget: 'low',
+    prepChecklist: ['Pasiimti šiltą arbatą termosui', 'Pasirinkti maršrutą'],
+    planB: {
+      title: 'Namų kino vakaras',
+      description: 'Filmų vakaras su užkandžiais ir žvakių šviesa.',
+      steps: ['Išsirinkti filmą', 'Paruošti užkandžius', 'Uždegti žvakes'],
+      vibes: ['cozy'],
+      energy: 'low'
+    }
+  },
+  {
+    title: 'Mini degustacija namuose',
+    shortDescription: 'Sukurkite mažą degustaciją namuose su dviem gėrimais ir mažais užkandžiais.',
+    vibes: ['playful', 'intimate'],
+    purposeTags: ['laugh'],
+    energy: 'med',
+    seasonTags: ['any'],
+    radius: 'Home',
+    duration: '1.5h',
+    budget: 'med',
+    prepChecklist: ['Pasirinkti 2 gėrimus', 'Paruošti užkandžių lėkštę'],
+    planB: {
+      title: 'Kepinių popietė',
+      description: 'Lengvai pagaminami sausainiai ir rami muzika.',
+      steps: ['Pasiruošti ingredientus', 'Kepimo procesas', 'Skanauti kartu'],
+      vibes: ['warm'],
+      energy: 'low'
+    }
+  }
+];
+
+const pickFallbackIdea = () => fallbackIdeas[Math.floor(Math.random() * fallbackIdeas.length)];
+
 async function callGemini(prompt, systemInstruction, isJson = false) {
   if (!API_KEY) throw new Error("GEMINI_API_KEY not set");
 
@@ -48,21 +91,25 @@ export const generateIdeaDraft = async () => {
           "prepChecklist": ["String"], 
           "planB": { 
             "title": "String", 
-            "shortDescription": "String", 
+            "description": "String", 
             "steps": ["String"], 
             "vibes": ["String"], 
             "energy": "low" 
           }
         }
         Make it creative, romantic, or fun. Ensure specific activity details.`;
-        
+
   let text = await callGemini(userPrompt, systemPrompt, true);
   text = text.replace(/```json/g, '').replace(/```/g, '').trim();
   try {
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    if (!parsed || !parsed.title) {
+      return pickFallbackIdea();
+    }
+    return parsed;
   } catch (e) {
-    console.error("Failed to parse AI JSON:", text);
-    return {};
+    console.error('Failed to parse AI JSON:', text);
+    return pickFallbackIdea();
   }
 };
 
@@ -74,5 +121,9 @@ export const rewriteHintTeaser = async (idea) => {
         Do not reveal the exact location or activity name, just hint at the feeling/atmosphere. Make it alluring.`;
   
   const text = await callGemini(userPrompt, systemPrompt);
-  return text.trim();
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.includes('AI unavailable') || trimmed.includes('AI generation failed')) {
+    return 'Rytoj laukia maža staigmena — pasiruošk nuotykiui.';
+  }
+  return trimmed;
 };

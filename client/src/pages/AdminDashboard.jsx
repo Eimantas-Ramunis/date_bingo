@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
-import { 
-  Calendar, Shuffle, CheckCircle, Plus, Sparkles, LogOut, 
-  LayoutGrid, History, Trash2, Edit, Save, X, Eye, ArrowRight, ArrowLeft
+import {
+  Calendar, Shuffle, CheckCircle, Plus, Sparkles, LogOut,
+  LayoutGrid, History, Trash2, Edit, Save, X, Eye, ArrowRight, ArrowLeft,
+  KeyRound
 } from 'lucide-react';
 
 const TABS = [
@@ -17,6 +18,7 @@ export default function AdminDashboard() {
   const [currentPlan, setCurrentPlan] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   // Load plan on mount
   useEffect(() => {
@@ -54,7 +56,10 @@ export default function AdminDashboard() {
             </button>
           ))}
         </nav>
-        <div className="p-4 border-t border-stone-800">
+        <div className="p-4 border-t border-stone-800 space-y-3">
+          <button onClick={() => setShowPasswordModal(true)} className="flex items-center gap-2 text-sm hover:text-white">
+            <KeyRound size={16} /> Change Password
+          </button>
           <button onClick={logout} className="flex items-center gap-2 text-sm hover:text-white">
             <LogOut size={16} /> Logout
           </button>
@@ -68,6 +73,8 @@ export default function AdminDashboard() {
         {activeTab === 'bingo' && <BingoTab />}
         {activeTab === 'history' && <HistoryTab />}
       </main>
+
+      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
     </div>
   );
 }
@@ -220,6 +227,7 @@ function PlanningForm({ idea, onCancel, onSuccess }) {
 function ActivePlanView({ plan, refresh }) {
   const [links, setLinks] = useState({ hint: '', reveal: '' });
   const [completing, setCompleting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const generateLink = async (type) => {
     const res = await api.post('/planning/token', { plannedDateId: plan.id, type });
@@ -227,6 +235,19 @@ function ActivePlanView({ plan, refresh }) {
     setLinks(prev => ({ ...prev, [type.toLowerCase()]: url }));
     navigator.clipboard.writeText(url);
     alert('Link copied to clipboard!');
+  };
+
+  const cancelPlan = async () => {
+    if (!confirm('Cancel this plan? Links will stop working.')) return;
+    setCancelling(true);
+    try {
+      await api.delete(`/planning/${plan.id}`);
+      refresh();
+    } catch (e) {
+      alert('Failed to cancel plan');
+    } finally {
+      setCancelling(false);
+    }
   };
 
   if (completing) return <CompleteForm plan={plan} onCancel={() => setCompleting(false)} onSuccess={refresh} />;
@@ -248,9 +269,14 @@ function ActivePlanView({ plan, refresh }) {
              </div>
           )}
         </div>
-        <button onClick={() => setCompleting(true)} className="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 flex items-center gap-2">
-          <CheckCircle size={18} /> Mark Done
-        </button>
+        <div className="flex gap-2">
+          <button onClick={cancelPlan} disabled={cancelling} className="bg-stone-200 text-stone-700 px-4 py-2 rounded hover:bg-stone-300">
+            {cancelling ? 'Cancelling...' : 'Cancel Plan'}
+          </button>
+          <button onClick={() => setCompleting(true)} className="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 flex items-center gap-2">
+            <CheckCircle size={18} /> Mark Done
+          </button>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -344,6 +370,7 @@ function CompleteForm({ plan, onCancel, onSuccess }) {
 function DeckTab() {
   const [ideas, setIdeas] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingIdea, setEditingIdea] = useState(null);
 
   useEffect(() => { loadIdeas(); }, []);
   const loadIdeas = () => api.get('/ideas').then(res => setIdeas(res.data));
@@ -352,12 +379,31 @@ function DeckTab() {
     <div className="max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-6">
          <h2 className="text-2xl font-bold font-serif">Idea Deck</h2>
-         <button onClick={() => setShowAdd(!showAdd)} className="bg-stone-800 text-white px-4 py-2 rounded flex items-center gap-2">
+         <button
+           onClick={() => {
+             setEditingIdea(null);
+             setShowAdd(!showAdd);
+           }}
+           className="bg-stone-800 text-white px-4 py-2 rounded flex items-center gap-2"
+         >
             <Plus size={18} /> Add Idea
-         </button>
+          </button>
       </div>
       
-      {showAdd && <IdeaForm onCancel={() => setShowAdd(false)} onSuccess={() => { setShowAdd(false); loadIdeas(); }} />}
+      {showAdd && (
+        <IdeaForm
+          onCancel={() => setShowAdd(false)}
+          onSuccess={() => { setShowAdd(false); loadIdeas(); }}
+        />
+      )}
+
+      {editingIdea && (
+        <IdeaForm
+          initialIdea={editingIdea}
+          onCancel={() => setEditingIdea(null)}
+          onSuccess={() => { setEditingIdea(null); loadIdeas(); }}
+        />
+      )}
 
       <div className="grid gap-4">
         {ideas.map(idea => (
@@ -370,9 +416,25 @@ function DeckTab() {
                   <span className="text-xs bg-stone-100 px-2 py-0.5 rounded text-stone-500">{idea.duration}</span>
                </div>
              </div>
-             <button onClick={() => { if(confirm('Delete?')) api.delete(`/ideas/${idea.id}`).then(loadIdeas); }} className="text-stone-400 hover:text-red-500">
-               <Trash2 size={16} />
-             </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setShowAdd(false);
+                  setEditingIdea(idea);
+                }}
+                className="text-stone-400 hover:text-stone-700"
+                aria-label="Edit idea"
+              >
+                <Edit size={16} />
+              </button>
+              <button
+                onClick={() => { if(confirm('Delete?')) api.delete(`/ideas/${idea.id}`).then(loadIdeas); }}
+                className="text-stone-400 hover:text-red-500"
+                aria-label="Delete idea"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -380,22 +442,55 @@ function DeckTab() {
   );
 }
 
-function IdeaForm({ onCancel, onSuccess }) {
+function IdeaForm({ initialIdea, onCancel, onSuccess }) {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
-     title: '', shortDescription: '', vibes: [], purposeTags: [], energy: 'med', seasonTags: [], 
-     radius: 'Vilnius', duration: '', budget: '', prepChecklist: [], 
-     planB: { title: '', description: '', steps: [], location: 'Home', duration: '' }
+    title: '', shortDescription: '', vibes: [], purposeTags: [], energy: 'med', seasonTags: [],
+    radius: 'Vilnius', duration: '', budget: '', prepChecklist: [],
+    planB: { title: '', description: '', steps: [], location: 'Home', duration: '' }
   });
   const [imageFile, setImageFile] = useState(null);
   const [generating, setGenerating] = useState(false);
+  const isEditing = Boolean(initialIdea);
+
+  useEffect(() => {
+    if (!initialIdea) return;
+    const planB = initialIdea.planB || {};
+    setForm({
+      title: initialIdea.title || '',
+      shortDescription: initialIdea.shortDescription || '',
+      vibes: initialIdea.vibes || [],
+      purposeTags: initialIdea.purposeTags || [],
+      energy: initialIdea.energy || 'med',
+      seasonTags: initialIdea.seasonTags || [],
+      radius: initialIdea.radius || 'Vilnius',
+      duration: initialIdea.duration || '',
+      budget: initialIdea.budget || '',
+      prepChecklist: initialIdea.prepChecklist || [],
+      planB: {
+        title: planB.title || '',
+        description: planB.description || planB.shortDescription || '',
+        steps: planB.steps || [],
+        location: planB.location || 'Home',
+        duration: planB.duration || ''
+      }
+    });
+  }, [initialIdea]);
 
   const generate = async () => {
     setGenerating(true);
     try {
       const res = await api.post('/ai/draft');
-      // Merge AI result with default struct to ensure Plan B fields exist
-      const merged = { ...form, ...res.data, planB: { ...form.planB, ...res.data.planB } };
+      const planB = res.data.planB || {};
+      const merged = {
+        ...form,
+        ...res.data,
+        planB: {
+          ...form.planB,
+          ...planB,
+          description: planB.description || planB.shortDescription || form.planB.description
+        }
+      };
       setForm(merged);
     } catch(e) { alert('AI Error or Quota Exceeded. Try manual.'); }
     setGenerating(false);
@@ -414,9 +509,15 @@ function IdeaForm({ onCancel, onSuccess }) {
       });
       if (imageFile) formData.append('image', imageFile);
 
-      await api.post('/ideas', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      if (isEditing) {
+        await api.put(`/ideas/${initialIdea.id}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+      } else {
+        await api.post('/ideas', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+      }
       onSuccess();
     } catch(e) { alert('Error saving'); }
   };
@@ -424,15 +525,15 @@ function IdeaForm({ onCancel, onSuccess }) {
   return (
      <div className="bg-white p-6 rounded-lg shadow-lg mb-6 border-2 border-stone-100">
         <div className="flex justify-between mb-6">
-           <h3 className="font-bold text-lg">New Idea - Step {step}/2</h3>
-           {step === 1 && (
+           <h3 className="font-bold text-lg">{isEditing ? 'Edit Idea' : `New Idea - Step ${step}/2`}</h3>
+           {step === 1 && !isEditing && (
              <button onClick={generate} disabled={generating} className="text-sm bg-purple-50 text-purple-700 px-3 py-1 rounded border border-purple-100">
                {generating ? 'Generating...' : 'Auto-Fill (Plan A)'}
              </button>
            )}
         </div>
 
-        {step === 1 && (
+       {(step === 1 || isEditing) && (
           <div className="space-y-4">
              <input className="w-full border p-2 rounded font-bold text-lg" placeholder="Title" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
              <textarea className="w-full border p-2 rounded" rows={3} placeholder="Description" value={form.shortDescription} onChange={e => setForm({...form, shortDescription: e.target.value})} />
@@ -462,14 +563,21 @@ function IdeaForm({ onCancel, onSuccess }) {
 
              <div className="flex justify-end gap-2 mt-4">
                <button onClick={onCancel} className="px-4 py-2 text-stone-500">Cancel</button>
-               <button onClick={() => setStep(2)} className="px-4 py-2 bg-stone-800 text-white rounded flex items-center gap-2">
-                 Next: Plan B <ArrowRight size={16} />
-               </button>
+               {!isEditing && (
+                 <button onClick={() => setStep(2)} className="px-4 py-2 bg-stone-800 text-white rounded flex items-center gap-2">
+                   Next: Plan B <ArrowRight size={16} />
+                 </button>
+               )}
+               {isEditing && (
+                 <button onClick={save} className="px-6 py-2 bg-emerald-600 text-white rounded font-bold shadow-lg shadow-emerald-200">
+                   Save Changes
+                 </button>
+               )}
              </div>
           </div>
         )}
 
-        {step === 2 && (
+        {step === 2 && !isEditing && (
           <div className="space-y-4">
              <div className="bg-yellow-50 p-4 rounded border border-yellow-200">
                 <h4 className="font-bold text-yellow-800 mb-4">Plan B (Backup)</h4>
@@ -490,14 +598,93 @@ function IdeaForm({ onCancel, onSuccess }) {
                </button>
                <div className="flex gap-2">
                  <button onClick={onCancel} className="px-4 py-2 text-stone-500">Cancel</button>
-                 <button onClick={save} className="px-6 py-2 bg-emerald-600 text-white rounded font-bold shadow-lg shadow-emerald-200">
-                   Save Idea
-                 </button>
-               </div>
-             </div>
-          </div>
+                  <button onClick={save} className="px-6 py-2 bg-emerald-600 text-white rounded font-bold shadow-lg shadow-emerald-200">
+                    Save Idea
+                  </button>
+                </div>
+              </div>
+           </div>
         )}
      </div>
+  );
+}
+
+function ChangePasswordModal({ onClose }) {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const submit = async () => {
+    setError('');
+    setSuccess('');
+
+    if (!newPassword || newPassword.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await api.post('/auth/update-password', { newPassword });
+      setSuccess('Password updated.');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (e) {
+      setError('Failed to update password.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-stone-900/40 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-sm rounded-xl shadow-xl p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-bold">Change Password</h2>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-700">
+            <X size={18} />
+          </button>
+        </div>
+        {error && <div className="bg-red-50 text-red-600 text-sm p-2 rounded mb-3">{error}</div>}
+        {success && <div className="bg-emerald-50 text-emerald-700 text-sm p-2 rounded mb-3">{success}</div>}
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-stone-500">New Password</label>
+            <input
+              type="password"
+              className="w-full border p-2 rounded"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-stone-500">Confirm Password</label>
+            <input
+              type="password"
+              className="w-full border p-2 rounded"
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} className="px-3 py-2 text-stone-500">Close</button>
+          <button
+            onClick={submit}
+            disabled={submitting}
+            className="px-4 py-2 bg-stone-800 text-white rounded"
+          >
+            {submitting ? 'Saving...' : 'Update'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
