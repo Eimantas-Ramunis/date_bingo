@@ -1,6 +1,15 @@
 import prisma from '../utils/db.js';
 import crypto from 'crypto';
 
+const parseJson = (value, fallback) => {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch (err) {
+    return fallback;
+  }
+};
+
 // Helper: Suggest 3
 export const suggestIdeas = async (req, res, next) => {
   try {
@@ -16,12 +25,12 @@ export const suggestIdeas = async (req, res, next) => {
     // Shuffle and pick 3
     const shuffled = validIdeas.sort(() => 0.5 - Math.random());
     const selected = shuffled.slice(0, 3).map(i => ({
-        ...i,
-        vibes: JSON.parse(i.vibes),
-        purposeTags: JSON.parse(i.purposeTags),
-        seasonTags: JSON.parse(i.seasonTags),
-        prepChecklist: JSON.parse(i.prepChecklist),
-        planB: JSON.parse(i.planB)
+      ...i,
+      vibes: parseJson(i.vibes, []),
+      purposeTags: parseJson(i.purposeTags, []),
+      seasonTags: parseJson(i.seasonTags, []),
+      prepChecklist: parseJson(i.prepChecklist, []),
+      planB: parseJson(i.planB, {})
     }));
     
     res.json(selected);
@@ -43,13 +52,13 @@ export const getCurrentPlan = async (req, res, next) => {
     // Parse JSON fields
     const formatted = {
       ...plan,
-      planASteps: JSON.parse(plan.planASteps || '[]'),
-      planBSteps: JSON.parse(plan.planBSteps || '[]'),
+      planASteps: parseJson(plan.planASteps, []),
+      planBSteps: parseJson(plan.planBSteps, []),
       idea: {
         ...plan.idea,
-        vibes: JSON.parse(plan.idea.vibes),
-        purposeTags: JSON.parse(plan.idea.purposeTags),
-        planB: JSON.parse(plan.idea.planB)
+        vibes: parseJson(plan.idea.vibes, []),
+        purposeTags: parseJson(plan.idea.purposeTags, []),
+        planB: parseJson(plan.idea.planB, {})
       }
     };
     res.json(formatted);
@@ -68,7 +77,7 @@ export const selectIdea = async (req, res, next) => {
     if (existing) return res.status(400).json({ error: 'Active plan already exists' });
 
     const idea = await prisma.dateIdea.findUnique({ where: { id: ideaId } });
-    const planB = JSON.parse(idea.planB);
+    const planB = parseJson(idea?.planB, {});
 
     const plan = await prisma.plannedDate.create({
       data: {
@@ -79,8 +88,8 @@ export const selectIdea = async (req, res, next) => {
         hintDuration,
         planASteps: idea.prepChecklist, 
         planBSteps: JSON.stringify(planB.steps || []),
-        planBTitle: planB.title || "Plan B",
-        planBDesc: planB.shortDescription || "No description provided.",
+        planBTitle: planB.title || 'Plan B',
+        planBDesc: planB.description || planB.shortDescription || 'No description provided.',
         status: 'PLANNED'
       }
     });

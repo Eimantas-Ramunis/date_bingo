@@ -1,5 +1,17 @@
 import prisma from '../utils/db.js';
 
+const parseJson = (value, fallback) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch (err) {
+      return fallback;
+    }
+  }
+  return value;
+};
+
 export const listIdeas = async (req, res, next) => {
   try {
     const ideas = await prisma.dateIdea.findMany({
@@ -23,14 +35,6 @@ export const createIdea = async (req, res, next) => {
     const data = req.body;
     const image = req.file ? req.file.filename : null;
 
-    // Helper to safely parse if string, or return as is if already object (though multipart sends strings)
-    const parse = (val) => {
-        if (typeof val === 'string') {
-            try { return JSON.parse(val); } catch(e) { return []; }
-        }
-        return val;
-    };
-
     const idea = await prisma.dateIdea.create({
       data: {
         title: data.title,
@@ -43,11 +47,11 @@ export const createIdea = async (req, res, next) => {
         cooldownDays: parseInt(data.cooldownDays || 45),
         
         // JSON fields - explicit stringify to be safe
-        vibes: JSON.stringify(parse(data.vibes)),
-        purposeTags: JSON.stringify(parse(data.purposeTags)),
-        seasonTags: JSON.stringify(parse(data.seasonTags)),
-        prepChecklist: JSON.stringify(parse(data.prepChecklist)),
-        planB: JSON.stringify(parse(data.planB))
+        vibes: JSON.stringify(parseJson(data.vibes, [])),
+        purposeTags: JSON.stringify(parseJson(data.purposeTags, [])),
+        seasonTags: JSON.stringify(parseJson(data.seasonTags, [])),
+        prepChecklist: JSON.stringify(parseJson(data.prepChecklist, [])),
+        planB: JSON.stringify(parseJson(data.planB, {}))
       }
     });
     res.json(idea);
@@ -60,13 +64,6 @@ export const updateIdea = async (req, res, next) => {
     const data = req.body;
     const image = req.file ? req.file.filename : undefined;
 
-    const parse = (val) => {
-        if (typeof val === 'string') {
-            try { return JSON.parse(val); } catch(e) { return []; }
-        }
-        return val;
-    };
-
     const updateData = {
         title: data.title,
         shortDescription: data.shortDescription,
@@ -76,11 +73,11 @@ export const updateIdea = async (req, res, next) => {
         budget: data.budget,
         cooldownDays: parseInt(data.cooldownDays || 45),
         
-        vibes: JSON.stringify(parse(data.vibes)),
-        purposeTags: JSON.stringify(parse(data.purposeTags)),
-        seasonTags: JSON.stringify(parse(data.seasonTags)),
-        prepChecklist: JSON.stringify(parse(data.prepChecklist)),
-        planB: JSON.stringify(parse(data.planB))
+        vibes: JSON.stringify(parseJson(data.vibes, [])),
+        purposeTags: JSON.stringify(parseJson(data.purposeTags, [])),
+        seasonTags: JSON.stringify(parseJson(data.seasonTags, [])),
+        prepChecklist: JSON.stringify(parseJson(data.prepChecklist, [])),
+        planB: JSON.stringify(parseJson(data.planB, {}))
     };
 
     if (image) updateData.image = image;
