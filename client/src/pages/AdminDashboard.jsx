@@ -287,31 +287,78 @@ function ActivePlanView({ plan, refresh }) {
   const [cancelling, setCancelling] = useState(false);
   const [previewLinks, setPreviewLinks] = useState({ hint: '', reveal: '' });
 
+  // ✅ Robust clipboard helper:
+  // - Works on HTTPS + localhost with navigator.clipboard
+  // - Falls back to execCommand for http://LAN_IP and older browsers
+  const copyToClipboard = async (text) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (err) {
+      // Intentionally swallow and fall back
+      console.warn('navigator.clipboard.writeText failed, falling back:', err);
+    }
+
+    // Fallback: execCommand('copy')
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
+      ta.style.left = '-9999px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+
+      ta.focus();
+      ta.select();
+
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (err) {
+      console.error('Fallback copy failed:', err);
+      return false;
+    }
+  };
+
   const generateLink = async (type) => {
-    const res = await api.post('/planning/token', { plannedDateId: plan.id, type });
-    const url = `${window.location.origin}/r?token=${res.data.token}`;
-    setLinks(prev => ({ ...prev, [type.toLowerCase()]: url }));
-    navigator.clipboard.writeText(url);
-    alert('Link copied to clipboard!');
+    try {
+      const res = await api.post('/planning/token', { plannedDateId: plan.id, type });
+      const url = `${window.location.origin}/r?token=${res.data.token}`;
+
+      setLinks((prev) => ({ ...prev, [type.toLowerCase()]: url }));
+
+      const copied = await copyToClipboard(url);
+      alert(copied ? 'Link copied to clipboard!' : 'Could not auto-copy. Link is shown on screen.');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to generate link');
+    }
   };
 
   const loadPreviews = async () => {
     try {
       const [hintRes, revealRes] = await Promise.all([
         api.post('/planning/preview-token', { plannedDateId: plan.id, type: 'HINT' }),
-        api.post('/planning/preview-token', { plannedDateId: plan.id, type: 'REVEAL' })
+        api.post('/planning/preview-token', { plannedDateId: plan.id, type: 'REVEAL' }),
       ]);
+
       setPreviewLinks({
         hint: `${window.location.origin}/r?token=${hintRes.data.token}`,
-        reveal: `${window.location.origin}/r?token=${revealRes.data.token}`
+        reveal: `${window.location.origin}/r?token=${revealRes.data.token}`,
       });
     } catch (e) {
+      console.error(e);
       alert('Failed to load previews');
     }
   };
 
   useEffect(() => {
     loadPreviews();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan.id]);
 
   const cancelPlan = async () => {
@@ -321,36 +368,55 @@ function ActivePlanView({ plan, refresh }) {
       await api.delete(`/planning/${plan.id}`);
       refresh();
     } catch (e) {
+      console.error(e);
       alert('Failed to cancel plan');
     } finally {
       setCancelling(false);
     }
   };
 
-  if (completing) return <CompleteForm plan={plan} onCancel={() => setCompleting(false)} onSuccess={refresh} />;
+  if (completing)
+    return <CompleteForm plan={plan} onCancel={() => setCompleting(false)} onSuccess={refresh} />;
 
   return (
     <div className="max-w-4xl mx-auto">
       <div className="flex justify-between items-start mb-6">
         <div>
           <div className="flex gap-2 mb-2">
-            <span className={`text-xs px-2 py-1 rounded-full uppercase font-bold ${plan.status === 'VETOED' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>
-               Status: {plan.status}
+            <span
+              className={`text-xs px-2 py-1 rounded-full uppercase font-bold ${
+                plan.status === 'VETOED'
+                  ? 'bg-red-100 text-red-800'
+                  : 'bg-emerald-100 text-emerald-800'
+              }`}
+            >
+              Status: {plan.status}
             </span>
-            {plan.planBActive && <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full uppercase font-bold">Plan B Active</span>}
+            {plan.planBActive && (
+              <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full uppercase font-bold">
+                Plan B Active
+              </span>
+            )}
           </div>
           <h2 className="text-3xl font-serif font-bold">{plan.idea.title}</h2>
           {plan.status === 'VETOED' && plan.vetoReason && (
-             <div className="mt-2 text-red-600 font-medium">
-               Veto Reason: <span className="italic">"{plan.vetoReason}"</span>
-             </div>
+            <div className="mt-2 text-red-600 font-medium">
+              Veto Reason: <span className="italic">"{plan.vetoReason}"</span>
+            </div>
           )}
         </div>
         <div className="flex gap-2">
-          <button onClick={cancelPlan} disabled={cancelling} className="bg-stone-200 text-stone-700 px-4 py-2 rounded hover:bg-stone-300">
+          <button
+            onClick={cancelPlan}
+            disabled={cancelling}
+            className="bg-stone-200 text-stone-700 px-4 py-2 rounded hover:bg-stone-300"
+          >
             {cancelling ? 'Cancelling...' : 'Cancel Plan'}
           </button>
-          <button onClick={() => setCompleting(true)} className="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 flex items-center gap-2">
+          <button
+            onClick={() => setCompleting(true)}
+            className="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 flex items-center gap-2"
+          >
             <CheckCircle size={18} /> Mark Done
           </button>
         </div>
@@ -358,80 +424,110 @@ function ActivePlanView({ plan, refresh }) {
 
       <div className="grid md:grid-cols-2 gap-6">
         <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 space-y-4">
-               <h3 className="font-bold border-b pb-2">Links</h3>
-               <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">Hint Link</div>
-                    <div className="text-xs text-stone-500">Send day before</div>
-                  </div>
-                  <button onClick={() => generateLink('HINT')} className="text-sm bg-stone-100 px-3 py-1 rounded hover:bg-stone-200">
-                    Generate & Copy
-                  </button>
-               </div>
-               <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">Reveal Link</div>
-                    <div className="text-xs text-stone-500">Send day of</div>
-                  </div>
-                  <button onClick={() => generateLink('REVEAL')} className="text-sm bg-stone-100 px-3 py-1 rounded hover:bg-stone-200">
-                    Generate & Copy
-                  </button>
-               </div>
-               <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">Bingo Link</div>
-                    <div className="text-xs text-stone-500">Share board</div>
-                  </div>
-                  <button onClick={() => generateLink('BINGO')} className="text-sm bg-stone-100 px-3 py-1 rounded hover:bg-stone-200">
-                    Generate & Copy
-                  </button>
-               </div>
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 space-y-4">
+            <h3 className="font-bold border-b pb-2">Links</h3>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Hint Link</div>
+                <div className="text-xs text-stone-500">Send day before</div>
+              </div>
+              <button
+                onClick={() => generateLink('HINT')}
+                className="text-sm bg-stone-100 px-3 py-1 rounded hover:bg-stone-200"
+              >
+                Generate & Copy
+              </button>
             </div>
 
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 space-y-4">
-              <div className="flex items-center justify-between border-b pb-2">
-                <h3 className="font-bold">Preview Cards</h3>
-                <button onClick={loadPreviews} className="text-xs text-stone-400 hover:text-stone-700">Refresh</button>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Reveal Link</div>
+                <div className="text-xs text-stone-500">Send day of</div>
               </div>
-              <div className="grid gap-4">
-                <div className="border rounded-lg overflow-hidden">
-                  {previewLinks.hint ? (
-                    <iframe title="Hint preview" src={previewLinks.hint} className="w-full h-72" />
-                  ) : (
-                    <div className="p-4 text-sm text-stone-400">Hint preview loading...</div>
-                  )}
-                </div>
-                <div className="border rounded-lg overflow-hidden">
-                  {previewLinks.reveal ? (
-                    <iframe title="Reveal preview" src={previewLinks.reveal} className="w-full h-72" />
-                  ) : (
-                    <div className="p-4 text-sm text-stone-400">Reveal preview loading...</div>
-                  )}
-                </div>
-              </div>
+              <button
+                onClick={() => generateLink('REVEAL')}
+                className="text-sm bg-stone-100 px-3 py-1 rounded hover:bg-stone-200"
+              >
+                Generate & Copy
+              </button>
             </div>
 
-            {plan.planBActive && (
-               <div className="bg-yellow-50 p-6 rounded-xl border border-yellow-200">
-                  <h3 className="font-bold text-yellow-900 border-b border-yellow-200 pb-2 mb-3">Plan B Details</h3>
-                  <h4 className="font-bold text-lg">{plan.planBTitle}</h4>
-                  <p className="text-sm text-stone-700 mb-2">{plan.planBDesc}</p>
-                  <ul className="list-disc pl-4 text-sm text-stone-600">
-                     {plan.planBSteps.map((s,i) => <li key={i}>{s}</li>)}
-                  </ul>
-               </div>
-            )}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Bingo Link</div>
+                <div className="text-xs text-stone-500">Share board</div>
+              </div>
+              <button
+                onClick={() => generateLink('BINGO')}
+                className="text-sm bg-stone-100 px-3 py-1 rounded hover:bg-stone-200"
+              >
+                Generate & Copy
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 space-y-4">
+            <div className="flex items-center justify-between border-b pb-2">
+              <h3 className="font-bold">Preview Cards</h3>
+              <button onClick={loadPreviews} className="text-xs text-stone-400 hover:text-stone-700">
+                Refresh
+              </button>
+            </div>
+            <div className="grid gap-4">
+              <div className="border rounded-lg overflow-hidden">
+                {previewLinks.hint ? (
+                  <iframe title="Hint preview" src={previewLinks.hint} className="w-full h-72" />
+                ) : (
+                  <div className="p-4 text-sm text-stone-400">Hint preview loading...</div>
+                )}
+              </div>
+              <div className="border rounded-lg overflow-hidden">
+                {previewLinks.reveal ? (
+                  <iframe title="Reveal preview" src={previewLinks.reveal} className="w-full h-72" />
+                ) : (
+                  <div className="p-4 text-sm text-stone-400">Reveal preview loading...</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {plan.planBActive && (
+            <div className="bg-yellow-50 p-6 rounded-xl border border-yellow-200">
+              <h3 className="font-bold text-yellow-900 border-b border-yellow-200 pb-2 mb-3">
+                Plan B Details
+              </h3>
+              <h4 className="font-bold text-lg">{plan.planBTitle}</h4>
+              <p className="text-sm text-stone-700 mb-2">{plan.planBDesc}</p>
+              <ul className="list-disc pl-4 text-sm text-stone-600">
+                {plan.planBSteps.map((s, i) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 h-fit">
-           <h3 className="font-bold border-b pb-2 mb-4">Plan A Details</h3>
-           <div className="space-y-2 text-sm">
-             <div className="grid grid-cols-3"><span className="text-stone-500">Teaser</span> <span className="col-span-2 italic">{plan.hintTeaser}</span></div>
-             <div className="grid grid-cols-3"><span className="text-stone-500">Time</span> <span className="col-span-2">{plan.hintStartTime}</span></div>
-             <div className="grid grid-cols-3"><span className="text-stone-500">Dress</span> <span className="col-span-2">{plan.hintDressCode}</span></div>
-             <div className="grid grid-cols-3"><span className="text-stone-500">Duration</span> <span className="col-span-2">{plan.hintDuration}</span></div>
-           </div>
+          <h3 className="font-bold border-b pb-2 mb-4">Plan A Details</h3>
+          <div className="space-y-2 text-sm">
+            <div className="grid grid-cols-3">
+              <span className="text-stone-500">Teaser</span>{' '}
+              <span className="col-span-2 italic">{plan.hintTeaser}</span>
+            </div>
+            <div className="grid grid-cols-3">
+              <span className="text-stone-500">Time</span>{' '}
+              <span className="col-span-2">{plan.hintStartTime}</span>
+            </div>
+            <div className="grid grid-cols-3">
+              <span className="text-stone-500">Dress</span>{' '}
+              <span className="col-span-2">{plan.hintDressCode}</span>
+            </div>
+            <div className="grid grid-cols-3">
+              <span className="text-stone-500">Duration</span>{' '}
+              <span className="col-span-2">{plan.hintDuration}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
