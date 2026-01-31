@@ -2,3 +2,4 @@
 server/node_modules
 TEST_PLAN.md
 REPORT.md
+data/uploads/*
