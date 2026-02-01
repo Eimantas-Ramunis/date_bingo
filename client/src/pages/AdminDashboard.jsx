@@ -652,11 +652,22 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
   const [form, setForm] = useState({
     title: '', shortDescription: '', vibes: [], purposeTags: [], energy: 'med', seasonTags: [],
     radius: 'Vilnius', duration: '', budget: '', prepChecklist: [],
-    planB: { title: '', description: '', steps: [], location: 'Home', duration: '' }
+    planB: { title: '', description: '', steps: [], location: 'Home', duration: '', vibes: [], energy: 'low' }
   });
   const [imageFile, setImageFile] = useState(null);
   const [generating, setGenerating] = useState(false);
   const isEditing = Boolean(initialIdea);
+
+  const toCommaList = (items) => (items || []).join(', ');
+  const toLineList = (items) => (items || []).join('\n');
+  const parseCommaList = (value) => value
+    .split(/[\n,]+/)
+    .map(item => item.trim())
+    .filter(Boolean);
+  const parseLineList = (value) => value
+    .split(/\n+/)
+    .map(item => item.trim())
+    .filter(Boolean);
 
   useEffect(() => {
     if (!initialIdea) return;
@@ -677,7 +688,9 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
         description: planB.description || planB.shortDescription || '',
         steps: planB.steps || [],
         location: planB.location || 'Home',
-        duration: planB.duration || ''
+        duration: planB.duration || '',
+        vibes: planB.vibes || [],
+        energy: planB.energy || 'low'
       }
     });
   }, [initialIdea]);
@@ -738,13 +751,13 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
            )}
         </div>
 
-       {(step === 1 || isEditing) && (
-          <div className="space-y-4">
-             <input className="w-full border p-2 rounded font-bold text-lg" placeholder="Title" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
-             <textarea className="w-full border p-2 rounded" rows={3} placeholder="Description" value={form.shortDescription} onChange={e => setForm({...form, shortDescription: e.target.value})} />
-             
-             <div className="grid grid-cols-2 gap-4">
-               <div>
+        {(step === 1 || isEditing) && (
+           <div className="space-y-4">
+              <input className="w-full border p-2 rounded font-bold text-lg" placeholder="Title" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
+              <textarea className="w-full border p-2 rounded" rows={3} placeholder="Description" value={form.shortDescription} onChange={e => setForm({...form, shortDescription: e.target.value})} />
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
                   <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Duration</label>
                   <input className="w-full border p-2 rounded" placeholder="e.g. 2h" value={form.duration} onChange={e => setForm({...form, duration: e.target.value})} />
                </div>
@@ -752,61 +765,135 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
                   <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Location / Area</label>
                   <input className="w-full border p-2 rounded" placeholder="e.g. Old Town" value={form.radius} onChange={e => setForm({...form, radius: e.target.value})} />
                </div>
-               <div>
-                  <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Energy</label>
-                  <select className="w-full border p-2 rounded" value={form.energy} onChange={e => setForm({...form, energy: e.target.value})}>
-                     <option value="low">Low Energy</option>
-                     <option value="med">Med Energy</option>
-                     <option value="high">High Energy</option>
-                  </select>
-               </div>
-               <div>
-                  <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Cover Image</label>
-                  <input type="file" className="w-full text-sm" onChange={e => setImageFile(e.target.files[0])} />
-               </div>
-             </div>
+                <div>
+                   <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Energy</label>
+                   <select className="w-full border p-2 rounded" value={form.energy} onChange={e => setForm({...form, energy: e.target.value})}>
+                      <option value="low">Low Energy</option>
+                      <option value="med">Med Energy</option>
+                      <option value="high">High Energy</option>
+                   </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Budget</label>
+                  <input className="w-full border p-2 rounded" placeholder="e.g. low / med / 20 EUR" value={form.budget} onChange={e => setForm({...form, budget: e.target.value})} />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Cover Image</label>
+                   <input type="file" className="w-full text-sm" onChange={e => setImageFile(e.target.files[0])} />
+                </div>
+              </div>
 
-             <div className="flex justify-end gap-2 mt-4">
-               <button onClick={onCancel} className="px-4 py-2 text-stone-500">Cancel</button>
-               {!isEditing && (
-                 <button onClick={() => setStep(2)} className="px-4 py-2 bg-stone-800 text-white rounded flex items-center gap-2">
-                   Next: Plan B <ArrowRight size={16} />
-                 </button>
-               )}
-               {isEditing && (
-                 <button onClick={save} className="px-6 py-2 bg-emerald-600 text-white rounded font-bold shadow-lg shadow-emerald-200">
-                   Save Changes
-                 </button>
-               )}
-             </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Vibes (comma separated)</label>
+                  <input
+                    className="w-full border p-2 rounded"
+                    placeholder="cozy, playful"
+                    value={toCommaList(form.vibes)}
+                    onChange={e => setForm({ ...form, vibes: parseCommaList(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Purpose Tags (comma separated)</label>
+                  <input
+                    className="w-full border p-2 rounded"
+                    placeholder="talk, laugh"
+                    value={toCommaList(form.purposeTags)}
+                    onChange={e => setForm({ ...form, purposeTags: parseCommaList(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Season Tags (comma separated)</label>
+                  <input
+                    className="w-full border p-2 rounded"
+                    placeholder="any, winter"
+                    value={toCommaList(form.seasonTags)}
+                    onChange={e => setForm({ ...form, seasonTags: parseCommaList(e.target.value) })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Plan A Steps (Eiga)</label>
+                <textarea
+                  className="w-full border p-2 rounded"
+                  rows={4}
+                  placeholder="One step per line"
+                  value={toLineList(form.prepChecklist)}
+                  onChange={e => setForm({ ...form, prepChecklist: parseLineList(e.target.value) })}
+                />
+              </div>
+              
+           </div>
+        )}
+
+        {!isEditing && step === 1 && (
+          <div className="flex justify-end gap-2 mt-4">
+            <button onClick={onCancel} className="px-4 py-2 text-stone-500">Cancel</button>
+            <button onClick={() => setStep(2)} className="px-4 py-2 bg-stone-800 text-white rounded flex items-center gap-2">
+              Next: Plan B <ArrowRight size={16} />
+            </button>
           </div>
         )}
 
-        {step === 2 && !isEditing && (
+        {(step === 2 || isEditing) && (
           <div className="space-y-4">
              <div className="bg-yellow-50 p-4 rounded border border-yellow-200">
                 <h4 className="font-bold text-yellow-800 mb-4">Plan B (Backup)</h4>
                 <div className="space-y-3">
                    <input className="w-full border p-2 rounded" placeholder="Backup Title" value={form.planB.title || ''} onChange={e => setForm({...form, planB: {...form.planB, title: e.target.value}})} />
                    <textarea className="w-full border p-2 rounded" rows={2} placeholder="Backup Description" value={form.planB.description || ''} onChange={e => setForm({...form, planB: {...form.planB, description: e.target.value}})} />
+                   <textarea
+                     className="w-full border p-2 rounded"
+                     rows={3}
+                     placeholder="Plan B Steps (one per line)"
+                     value={toLineList(form.planB.steps)}
+                     onChange={e => setForm({ ...form, planB: { ...form.planB, steps: parseLineList(e.target.value) } })}
+                   />
                    
                    <div className="grid grid-cols-2 gap-4">
                      <input className="border p-2 rounded" placeholder="Location (e.g. Home)" value={form.planB.location || ''} onChange={e => setForm({...form, planB: {...form.planB, location: e.target.value}})} />
                      <input className="border p-2 rounded" placeholder="Duration" value={form.planB.duration || ''} onChange={e => setForm({...form, planB: {...form.planB, duration: e.target.value}})} />
                    </div>
+
+                   <div className="grid grid-cols-2 gap-4">
+                     <div>
+                       <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Plan B Vibes</label>
+                       <input
+                         className="w-full border p-2 rounded"
+                         placeholder="cozy, calm"
+                         value={toCommaList(form.planB.vibes || [])}
+                         onChange={e => setForm({ ...form, planB: { ...form.planB, vibes: parseCommaList(e.target.value) } })}
+                       />
+                     </div>
+                     <div>
+                       <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Plan B Energy</label>
+                       <select
+                         className="w-full border p-2 rounded"
+                         value={form.planB.energy || 'low'}
+                         onChange={e => setForm({ ...form, planB: { ...form.planB, energy: e.target.value } })}
+                       >
+                         <option value="low">Low Energy</option>
+                         <option value="med">Med Energy</option>
+                         <option value="high">High Energy</option>
+                       </select>
+                     </div>
+                   </div>
                 </div>
              </div>
 
              <div className="flex justify-between mt-4">
-               <button onClick={() => setStep(1)} className="px-4 py-2 text-stone-500 flex items-center gap-2">
-                 <ArrowLeft size={16} /> Back
-               </button>
-               <div className="flex gap-2">
+               {!isEditing && (
+                 <button onClick={() => setStep(1)} className="px-4 py-2 text-stone-500 flex items-center gap-2">
+                   <ArrowLeft size={16} /> Back
+                 </button>
+               )}
+               <div className="flex gap-2 ml-auto">
                  <button onClick={onCancel} className="px-4 py-2 text-stone-500">Cancel</button>
-                  <button onClick={save} className="px-6 py-2 bg-emerald-600 text-white rounded font-bold shadow-lg shadow-emerald-200">
-                    Save Idea
-                  </button>
-                </div>
+                 <button onClick={save} className="px-6 py-2 bg-emerald-600 text-white rounded font-bold shadow-lg shadow-emerald-200">
+                   {isEditing ? 'Save Changes' : 'Save Idea'}
+                 </button>
+               </div>
               </div>
            </div>
         )}
