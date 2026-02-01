@@ -13,6 +13,19 @@ const TABS = [
   { id: 'history', label: 'History', icon: History },
 ];
 
+const AI_THEMES = [
+  { id: 'cozy-home', label: 'Cozy at Home' },
+  { id: 'outdoors-daylight', label: 'Outdoors & Daylight' },
+  { id: 'food-drink', label: 'Food & Drink' },
+  { id: 'creative-make', label: 'Creative / Make' },
+  { id: 'playful-games', label: 'Playful Games' },
+  { id: 'culture-art', label: 'Culture & Art' },
+  { id: 'movement-active', label: 'Movement / Active' },
+  { id: 'nostalgia', label: 'Nostalgia' },
+  { id: 'surprise-mystery', label: 'Surprise / Mystery' },
+  { id: 'slow-relax', label: 'Slow / Relax' }
+];
+
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('plan');
   const [currentPlan, setCurrentPlan] = useState(null);
@@ -656,6 +669,8 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
   });
   const [imageFile, setImageFile] = useState(null);
   const [generating, setGenerating] = useState(false);
+  const [aiSteeringText, setAiSteeringText] = useState('');
+  const [aiThemes, setAiThemes] = useState([]);
   const isEditing = Boolean(initialIdea);
 
   const toCommaList = (items) => (items || []).join(', ');
@@ -698,7 +713,10 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
   const generate = async () => {
     setGenerating(true);
     try {
-      const res = await api.post('/ai/draft');
+      const res = await api.post('/ai/draft', {
+        steeringText: aiSteeringText,
+        themes: aiThemes
+      });
       const planB = res.data.planB || {};
       const merged = {
         ...form,
@@ -712,6 +730,14 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
       setForm(merged);
     } catch(e) { alert('AI Error or Quota Exceeded. Try manual.'); }
     setGenerating(false);
+  };
+
+  const toggleTheme = (themeId) => {
+    setAiThemes(prev => (
+      prev.includes(themeId)
+        ? prev.filter(id => id !== themeId)
+        : [...prev, themeId]
+    ));
   };
 
   const save = async () => {
@@ -750,6 +776,44 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
              </button>
            )}
         </div>
+
+        {step === 1 && !isEditing && (
+          <div className="mb-6 rounded-lg border border-stone-200 bg-stone-50 p-4">
+            <div className="text-xs font-bold uppercase text-stone-500 mb-2">AI Steering (Optional)</div>
+            <div className="grid gap-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Theme Select (multi)</label>
+                <div className="flex flex-wrap gap-2">
+                  {AI_THEMES.map(theme => (
+                    <button
+                      type="button"
+                      key={theme.id}
+                      onClick={() => toggleTheme(theme.id)}
+                      className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                        aiThemes.includes(theme.id)
+                          ? 'bg-stone-800 text-white border-stone-800'
+                          : 'bg-white text-stone-600 border-stone-200 hover:border-stone-400'
+                      }`}
+                    >
+                      {theme.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Steering Note</label>
+                <textarea
+                  className="w-full border p-2 rounded"
+                  rows={2}
+                  placeholder="e.g. keep it indoors, no stargazing, something playful"
+                  value={aiSteeringText}
+                  onChange={e => setAiSteeringText(e.target.value)}
+                />
+                <div className="text-xs text-stone-400 mt-1">Used only for auto-fill prompts.</div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {(step === 1 || isEditing) && (
            <div className="space-y-4">

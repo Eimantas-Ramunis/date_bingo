@@ -73,7 +73,32 @@ async function generateContent({ prompt, systemInstruction, responseMimeType, re
   }
 }
 
-export const generateIdeaDraft = async () => {
+const THEME_HINTS = {
+  'cozy-home': 'Jaukus laikas namuose, šilti ritualai, privatumas.',
+  'outdoors-daylight': 'Diena lauke, natūralus šviesos pojūtis, grynas oras.',
+  'food-drink': 'Maistas ir gėrimai kaip pagrindinis akcentas.',
+  'creative-make': 'Kūryba arba kažko pasigaminimas savo rankomis.',
+  'playful-games': 'Žaidybiniai elementai, lengvas varžymasis, juokas.',
+  'culture-art': 'Menas, kultūra, muzika, parodos ar kinas.',
+  'movement-active': 'Judėjimas, aktyvumas, lengvas sportas ar šokis.',
+  'nostalgia': 'Prisiminimai, bendros istorijos, sentimentai.',
+  'surprise-mystery': 'Netikėtumas, paslaptis, mažas siužetas.',
+  'slow-relax': 'Lėtas tempas, poilsis, atsipalaidavimas.'
+};
+
+const normalizeSteering = (value) => (typeof value === 'string' ? value.trim() : '');
+const normalizeThemes = (themes) => (Array.isArray(themes) ? themes : [])
+  .map(theme => (typeof theme === 'string' ? theme.trim() : ''))
+  .filter(theme => Boolean(THEME_HINTS[theme]));
+
+export const generateIdeaDraft = async ({ steeringText, themes, existingTitles } = {}) => {
+  const normalizedSteering = normalizeSteering(steeringText);
+  const normalizedThemes = normalizeThemes(themes);
+  const themeHints = normalizedThemes.map(theme => `- ${THEME_HINTS[theme]}`).join('\n');
+  const titleList = Array.isArray(existingTitles)
+    ? existingTitles.filter(Boolean).slice(0, 60)
+    : [];
+
   const systemPrompt = "Tu esi kūrybingas pasimatymų planuotojas. Generuok unikalią pasimatymo idėją su Plan B. Viską rašyk lietuviškai. Naudok metrinius matavimo vienetus (km, m, min, val.). Grąžink TIK galiojantį JSON be markdown.";
   const userPrompt = `Sugeneruok JSON objektą pasimatymo idėjai.
         Structure:
@@ -96,7 +121,14 @@ export const generateIdeaDraft = async () => {
             "energy": "low" 
           }
         }
-        Rašyk lietuviškai. Naudok metrinius vienetus (pvz., "2 km", "45 min"). Aprašymas turi būti konkretus.`;
+        Rašyk lietuviškai. Naudok metrinius vienetus (pvz., "2 km", "45 min"). Aprašymas turi būti konkretus.
+        
+        Papildomas kontekstas (naudok kaip gaires, bet neperrašyk pažodžiui):
+        ${normalizedSteering ? `Admin kryptis: ${normalizedSteering}` : 'Admin kryptis: (nepateikta)'}
+        ${themeHints ? `Pageidaujamos temos (naudok bent 1-2):\n${themeHints}` : 'Pageidaujamos temos: (nepasirinkta)'}
+        ${titleList.length > 0 ? `Jau turimų idėjų pavadinimai (venk pasikartojimo ar labai panašių idėjų):\n- ${titleList.join('\n- ')}` : 'Jau turimų idėjų pavadinimai: (nėra)'}
+        
+        Svarbu: kurk originalią idėją, nepernaudok tų pačių pagrindinių veiklų. Venk pasikartojančių tropų (pvz., žvaigždžių stebėjimas), nebent tai aiškiai nurodyta kryptimi ar temomis.`;
 
   const schema = {
     type: 'object',
