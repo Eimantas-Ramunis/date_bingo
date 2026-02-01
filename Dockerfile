@@ -25,6 +25,6 @@ COPY --from=server-builder /app/server ./server
 
 WORKDIR /app/server
 ENV NODE_ENV=production
-EXPOSE 3000
+EXPOSE 8880
 
 CMD ["sh", "-c", "npx prisma db push && node prisma/seed.js && node src/index.js"]
