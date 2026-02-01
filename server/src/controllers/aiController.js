@@ -3,7 +3,18 @@ import prisma from '../utils/db.js';
 
 export const generateDraft = async (req, res, next) => {
   try {
-    const draft = await aiService.generateIdeaDraft();
+    const { steeringText, themes } = req.body || {};
+    const existingIdeas = await prisma.dateIdea.findMany({
+      select: { title: true },
+      orderBy: { createdAt: 'desc' },
+      take: 60
+    });
+    const existingTitles = existingIdeas.map(idea => idea.title).filter(Boolean);
+    const draft = await aiService.generateIdeaDraft({
+      steeringText,
+      themes,
+      existingTitles
+    });
     res.json(draft);
   } catch (err) { next(err); }
 };
