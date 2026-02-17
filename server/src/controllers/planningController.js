@@ -10,6 +10,50 @@ const parseJson = (value, fallback) => {
   }
 };
 
+const toIdeaDto = (idea) => ({
+  ...idea,
+  vibes: parseJson(idea.vibes, []),
+  purposeTags: parseJson(idea.purposeTags, []),
+  seasonTags: parseJson(idea.seasonTags, []),
+  prepChecklist: parseJson(idea.prepChecklist, []),
+  planB: parseJson(idea.planB, {})
+});
+
+const getCooldownMeta = (idea) => {
+  if (!idea.lastDoneAt) {
+    return {
+      isCoolingDown: false,
+      cooldownRemainingDays: 0
+    };
+  }
+
+  const now = Date.now();
+  const lastDoneAt = new Date(idea.lastDoneAt).getTime();
+  const elapsedDays = (now - lastDoneAt) / (1000 * 60 * 60 * 24);
+  const remaining = Math.max(0, Math.ceil(idea.cooldownDays - elapsedDays));
+  return {
+    isCoolingDown: remaining > 0,
+    cooldownRemainingDays: remaining
+  };
+};
+
+export const listPlanningIdeas = async (req, res, next) => {
+  try {
+    const ideas = await prisma.dateIdea.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const formatted = ideas.map((idea) => ({
+      ...toIdeaDto(idea),
+      ...getCooldownMeta(idea)
+    }));
+
+    res.json(formatted);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // Helper: Suggest 3
 export const suggestIdeas = async (req, res, next) => {
   try {
@@ -17,21 +61,13 @@ export const suggestIdeas = async (req, res, next) => {
     
     // Filter by cooldown
     const validIdeas = ideas.filter(idea => {
-      if (!idea.lastDoneAt) return true;
-      const daysSince = (new Date() - new Date(idea.lastDoneAt)) / (1000 * 60 * 60 * 24);
-      return daysSince > idea.cooldownDays;
+      const cooldownMeta = getCooldownMeta(idea);
+      return !cooldownMeta.isCoolingDown;
     });
     
     // Shuffle and pick 3
     const shuffled = validIdeas.sort(() => 0.5 - Math.random());
-    const selected = shuffled.slice(0, 3).map(i => ({
-      ...i,
-      vibes: parseJson(i.vibes, []),
-      purposeTags: parseJson(i.purposeTags, []),
-      seasonTags: parseJson(i.seasonTags, []),
-      prepChecklist: parseJson(i.prepChecklist, []),
-      planB: parseJson(i.planB, {})
-    }));
+    const selected = shuffled.slice(0, 3).map(i => toIdeaDto(i));
     
     res.json(selected);
   } catch (err) { next(err); }

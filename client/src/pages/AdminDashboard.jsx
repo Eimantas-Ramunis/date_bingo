@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
+import { useTheme } from '../theme';
 import {
   Calendar, Shuffle, CheckCircle, Plus, Sparkles, LogOut,
-  LayoutGrid, History, Trash2, Edit, Save, X, Eye, ArrowRight, ArrowLeft,
-  KeyRound
+  LayoutGrid, History, Trash2, Edit, X, ArrowRight, ArrowLeft,
+  KeyRound, Settings2, ImagePlus, Moon, Sun
 } from 'lucide-react';
 
 const TABS = [
@@ -23,15 +24,23 @@ const AI_THEMES = [
   { id: 'movement-active', label: 'Movement / Active' },
   { id: 'nostalgia', label: 'Nostalgia' },
   { id: 'surprise-mystery', label: 'Surprise / Mystery' },
-  { id: 'slow-relax', label: 'Slow / Relax' }
+  { id: 'slow-relax', label: 'Slow / Relax' },
+  { id: 'micro-adventure', label: 'Micro Adventure' },
+  { id: 'sunrise-sunset', label: 'Sunrise / Sunset' },
+  { id: 'rainy-day', label: 'Rainy Day' },
+  { id: 'budget-friendly', label: 'Budget Friendly' },
+  { id: 'luxury-treat', label: 'Luxury Treat' },
+  { id: 'memory-lane', label: 'Memory Lane' },
+  { id: 'nature-escape', label: 'Nature Escape' },
+  { id: 'social-light', label: 'Social Light' }
 ];
 
 export default function AdminDashboard() {
+  const { theme, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState('plan');
   const [currentPlan, setCurrentPlan] = useState(null);
-  const [suggestions, setSuggestions] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showAiSettingsModal, setShowAiSettingsModal] = useState(false);
 
   // Load plan on mount
   useEffect(() => {
@@ -48,9 +57,9 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-stone-100 flex flex-col md:flex-row">
+    <div className="min-h-screen bg-stone-100 dark:bg-stone-950 flex flex-col md:flex-row">
       {/* Sidebar */}
-      <aside className="bg-stone-900 text-stone-400 w-full md:w-64 flex-shrink-0 flex flex-col">
+      <aside className="bg-stone-900 dark:bg-black text-stone-400 w-full md:w-64 flex-shrink-0 flex flex-col">
         <div className="p-6">
           <h1 className="text-white font-serif text-xl font-bold">DateBingo</h1>
           <div className="text-xs mt-1 text-stone-500">Admin Console</div>
@@ -70,6 +79,12 @@ export default function AdminDashboard() {
           ))}
         </nav>
         <div className="p-4 border-t border-stone-800 space-y-3">
+          <button onClick={toggleTheme} className="flex items-center gap-2 text-sm hover:text-white">
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />} {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+          </button>
+          <button onClick={() => setShowAiSettingsModal(true)} className="flex items-center gap-2 text-sm hover:text-white">
+            <Settings2 size={16} /> AI Settings
+          </button>
           <button onClick={() => setShowPasswordModal(true)} className="flex items-center gap-2 text-sm hover:text-white">
             <KeyRound size={16} /> Change Password
           </button>
@@ -88,6 +103,7 @@ export default function AdminDashboard() {
       </main>
 
       {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
+      {showAiSettingsModal && <AiSettingsModal onClose={() => setShowAiSettingsModal(false)} />}
     </div>
   );
 }
@@ -96,8 +112,12 @@ export default function AdminDashboard() {
 
 function PlanTab({ currentPlan, refresh }) {
   const [suggestions, setSuggestions] = useState([]);
+  const [allIdeas, setAllIdeas] = useState([]);
   const [selectingIdea, setSelectingIdea] = useState(null);
+  const [manualQuery, setManualQuery] = useState('');
+  const [showManualPicker, setShowManualPicker] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [manualLoading, setManualLoading] = useState(false);
 
   const suggest = async () => {
     setLoading(true);
@@ -106,9 +126,36 @@ function PlanTab({ currentPlan, refresh }) {
     setLoading(false);
   };
 
+  const loadAllIdeas = async () => {
+    setManualLoading(true);
+    try {
+      const res = await api.get('/planning/ideas');
+      setAllIdeas(res.data);
+    } catch (e) {
+      setAllIdeas([]);
+    } finally {
+      setManualLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!currentPlan) {
+      loadAllIdeas();
+    }
+  }, [currentPlan]);
+
   const handleSelect = (idea) => {
     setSelectingIdea(idea);
   };
+
+  const filteredIdeas = allIdeas.filter((idea) => {
+    const query = manualQuery.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      idea.title.toLowerCase().includes(query) ||
+      idea.shortDescription.toLowerCase().includes(query)
+    );
+  });
 
   if (selectingIdea) {
     return <PlanningForm idea={selectingIdea} onCancel={() => setSelectingIdea(null)} onSuccess={() => { setSelectingIdea(null); refresh(); }} />;
@@ -125,21 +172,34 @@ function PlanTab({ currentPlan, refresh }) {
       {suggestions.length === 0 ? (
         <div className="text-center py-20 bg-white rounded-xl shadow-sm">
           <div className="mb-4">No active plan. Time to schedule something?</div>
-          <button 
-            onClick={suggest} 
-            disabled={loading}
-            className="bg-stone-800 text-white px-6 py-3 rounded-lg hover:bg-stone-700 disabled:opacity-50"
-          >
-            {loading ? 'Thinking...' : 'Suggest 3 Ideas'}
-          </button>
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              onClick={suggest}
+              disabled={loading}
+              className="bg-stone-800 text-white px-6 py-3 rounded-lg hover:bg-stone-700 disabled:opacity-50"
+            >
+              {loading ? 'Thinking...' : 'Suggest 3 Ideas'}
+            </button>
+            <button
+              onClick={() => setShowManualPicker(true)}
+              className="bg-white border border-stone-300 text-stone-700 px-6 py-3 rounded-lg hover:bg-stone-50"
+            >
+              Pick Specific Idea
+            </button>
+          </div>
         </div>
       ) : (
         <div className="space-y-6">
            <div className="flex justify-between items-center">
              <h3 className="text-stone-500">Suggestions</h3>
-             <button onClick={suggest} className="text-sm text-stone-400 hover:text-stone-800 flex items-center gap-1">
-               <Shuffle size={14} /> Reshuffle
-             </button>
+             <div className="flex gap-4">
+               <button onClick={() => setShowManualPicker(true)} className="text-sm text-stone-400 hover:text-stone-800">
+                 Pick specific
+               </button>
+               <button onClick={suggest} className="text-sm text-stone-400 hover:text-stone-800 flex items-center gap-1">
+                 <Shuffle size={14} /> Reshuffle
+               </button>
+             </div>
            </div>
            <div className="grid md:grid-cols-3 gap-6">
              {suggestions.map(idea => (
@@ -160,6 +220,64 @@ function PlanTab({ currentPlan, refresh }) {
                </div>
              ))}
            </div>
+        </div>
+      )}
+
+      {showManualPicker && (
+        <div className="fixed inset-0 bg-stone-900/50 z-40 p-4 flex items-center justify-center">
+          <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl">
+            <div className="p-4 border-b border-stone-200 flex items-center justify-between">
+              <h3 className="font-bold text-lg">Pick Specific Idea</h3>
+              <button onClick={() => setShowManualPicker(false)} className="text-stone-500 hover:text-stone-800">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4">
+              <input
+                className="w-full border rounded-lg p-2 mb-4"
+                placeholder="Search by title or description"
+                value={manualQuery}
+                onChange={e => setManualQuery(e.target.value)}
+              />
+              {manualLoading ? (
+                <div className="text-sm text-stone-500 py-8 text-center">Loading ideas...</div>
+              ) : (
+                <div className="max-h-[55vh] overflow-auto space-y-2">
+                  {filteredIdeas.map((idea) => (
+                    <button
+                      key={idea.id}
+                      onClick={() => {
+                        handleSelect(idea);
+                        setShowManualPicker(false);
+                      }}
+                      className="w-full text-left border rounded-lg p-3 hover:bg-stone-50"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-stone-800">{idea.title}</div>
+                          <div className="text-xs text-stone-500 line-clamp-2">{idea.shortDescription}</div>
+                        </div>
+                        <div className="text-right text-xs">
+                          {idea.isCoolingDown ? (
+                            <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-full">
+                              Cooldown {idea.cooldownRemainingDays}d
+                            </span>
+                          ) : (
+                            <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">
+                              Available
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                  {filteredIdeas.length === 0 && (
+                    <div className="text-sm text-stone-500 py-8 text-center">No ideas found.</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -589,6 +707,7 @@ function DeckTab() {
   const [ideas, setIdeas] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingIdea, setEditingIdea] = useState(null);
+  const [mediaIdea, setMediaIdea] = useState(null);
 
   useEffect(() => { loadIdeas(); }, []);
   const loadIdeas = () => api.get('/ideas').then(res => setIdeas(res.data));
@@ -646,6 +765,13 @@ function DeckTab() {
                 <Edit size={16} />
               </button>
               <button
+                onClick={() => setMediaIdea(idea)}
+                className="text-stone-400 hover:text-stone-700"
+                aria-label="Media manager"
+              >
+                <ImagePlus size={16} />
+              </button>
+              <button
                 onClick={() => { if(confirm('Delete?')) api.delete(`/ideas/${idea.id}`).then(loadIdeas); }}
                 className="text-stone-400 hover:text-red-500"
                 aria-label="Delete idea"
@@ -656,6 +782,14 @@ function DeckTab() {
           </div>
         ))}
       </div>
+
+      {mediaIdea && (
+        <MediaManagerModal
+          idea={mediaIdea}
+          onClose={() => setMediaIdea(null)}
+          onSelect={loadIdeas}
+        />
+      )}
     </div>
   );
 }
@@ -667,27 +801,62 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
     radius: 'Vilnius', duration: '', budget: '', prepChecklist: [],
     planB: { title: '', description: '', steps: [], location: 'Home', duration: '', vibes: [], energy: 'low' }
   });
+  const [draftFields, setDraftFields] = useState({
+    vibesText: '',
+    purposeTagsText: '',
+    seasonTagsText: '',
+    prepChecklistText: '',
+    planBStepsText: '',
+    planBVibesText: ''
+  });
   const [imageFile, setImageFile] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [aiSteeringText, setAiSteeringText] = useState('');
   const [aiThemes, setAiThemes] = useState([]);
+  const [aiCustomTheme, setAiCustomTheme] = useState('');
   const isEditing = Boolean(initialIdea);
 
   const toCommaList = (items) => (items || []).join(', ');
   const toLineList = (items) => (items || []).join('\n');
   const parseCommaList = (value) => value
-    .split(/[\n,]+/)
+    .split(',')
     .map(item => item.trim())
     .filter(Boolean);
   const parseLineList = (value) => value
-    .split(/\n+/)
+    .split('\n')
     .map(item => item.trim())
     .filter(Boolean);
+
+  const getDraftFields = (sourceForm) => ({
+    vibesText: toCommaList(sourceForm.vibes),
+    purposeTagsText: toCommaList(sourceForm.purposeTags),
+    seasonTagsText: toCommaList(sourceForm.seasonTags),
+    prepChecklistText: toLineList(sourceForm.prepChecklist),
+    planBStepsText: toLineList(sourceForm.planB?.steps || []),
+    planBVibesText: toCommaList(sourceForm.planB?.vibes || [])
+  });
+
+  const applyDraftFields = (sourceForm, sourceDrafts) => ({
+    ...sourceForm,
+    vibes: parseCommaList(sourceDrafts.vibesText),
+    purposeTags: parseCommaList(sourceDrafts.purposeTagsText),
+    seasonTags: parseCommaList(sourceDrafts.seasonTagsText),
+    prepChecklist: parseLineList(sourceDrafts.prepChecklistText),
+    planB: {
+      ...sourceForm.planB,
+      steps: parseLineList(sourceDrafts.planBStepsText),
+      vibes: parseCommaList(sourceDrafts.planBVibesText)
+    }
+  });
+
+  useEffect(() => {
+    setDraftFields(getDraftFields(form));
+  }, []);
 
   useEffect(() => {
     if (!initialIdea) return;
     const planB = initialIdea.planB || {};
-    setForm({
+    const nextForm = {
       title: initialIdea.title || '',
       shortDescription: initialIdea.shortDescription || '',
       vibes: initialIdea.vibes || [],
@@ -707,28 +876,35 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
         vibes: planB.vibes || [],
         energy: planB.energy || 'low'
       }
-    });
+    };
+    setForm(nextForm);
+    setDraftFields(getDraftFields(nextForm));
   }, [initialIdea]);
 
   const generate = async () => {
     setGenerating(true);
     try {
+      const normalized = applyDraftFields(form, draftFields);
       const res = await api.post('/ai/draft', {
         steeringText: aiSteeringText,
-        themes: aiThemes
+        themes: aiThemes,
+        customTheme: aiCustomTheme
       });
       const planB = res.data.planB || {};
       const merged = {
-        ...form,
+        ...normalized,
         ...res.data,
         planB: {
-          ...form.planB,
+          ...normalized.planB,
           ...planB,
-          description: planB.description || planB.shortDescription || form.planB.description
+          description: planB.description || planB.shortDescription || normalized.planB.description
         }
       };
       setForm(merged);
-    } catch(e) { alert('AI Error or Quota Exceeded. Try manual.'); }
+      setDraftFields(getDraftFields(merged));
+    } catch(e) {
+      alert(e.response?.data?.message || e.response?.data?.error || 'AI Error or Quota Exceeded. Try manual.');
+    }
     setGenerating(false);
   };
 
@@ -742,13 +918,15 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
 
   const save = async () => {
     try {
+      const normalized = applyDraftFields(form, draftFields);
+      setForm(normalized);
       const formData = new FormData();
       // Append top level fields
-      Object.keys(form).forEach(key => {
-        if (key === 'planB' || Array.isArray(form[key])) {
-             formData.append(key, JSON.stringify(form[key]));
+      Object.keys(normalized).forEach(key => {
+        if (key === 'planB' || Array.isArray(normalized[key])) {
+             formData.append(key, JSON.stringify(normalized[key]));
         } else {
-             formData.append(key, form[key]);
+             formData.append(key, normalized[key]);
         }
       });
       if (imageFile) formData.append('image', imageFile);
@@ -811,6 +989,16 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
                 />
                 <div className="text-xs text-stone-400 mt-1">Used only for auto-fill prompts.</div>
               </div>
+              <div>
+                <label className="block text-xs font-bold uppercase text-stone-400 mb-1">Custom Theme</label>
+                <input
+                  className="w-full border p-2 rounded"
+                  placeholder="e.g. nostalgic winter cafe with board games"
+                  value={aiCustomTheme}
+                  onChange={e => setAiCustomTheme(e.target.value)}
+                />
+                <div className="text-xs text-stone-400 mt-1">Included in prompt only if filled.</div>
+              </div>
             </div>
           </div>
         )}
@@ -853,8 +1041,9 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
                   <input
                     className="w-full border p-2 rounded"
                     placeholder="cozy, playful"
-                    value={toCommaList(form.vibes)}
-                    onChange={e => setForm({ ...form, vibes: parseCommaList(e.target.value) })}
+                    value={draftFields.vibesText}
+                    onChange={e => setDraftFields({ ...draftFields, vibesText: e.target.value })}
+                    onBlur={e => setForm({ ...form, vibes: parseCommaList(e.target.value) })}
                   />
                 </div>
                 <div>
@@ -862,8 +1051,9 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
                   <input
                     className="w-full border p-2 rounded"
                     placeholder="talk, laugh"
-                    value={toCommaList(form.purposeTags)}
-                    onChange={e => setForm({ ...form, purposeTags: parseCommaList(e.target.value) })}
+                    value={draftFields.purposeTagsText}
+                    onChange={e => setDraftFields({ ...draftFields, purposeTagsText: e.target.value })}
+                    onBlur={e => setForm({ ...form, purposeTags: parseCommaList(e.target.value) })}
                   />
                 </div>
                 <div>
@@ -871,8 +1061,9 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
                   <input
                     className="w-full border p-2 rounded"
                     placeholder="any, winter"
-                    value={toCommaList(form.seasonTags)}
-                    onChange={e => setForm({ ...form, seasonTags: parseCommaList(e.target.value) })}
+                    value={draftFields.seasonTagsText}
+                    onChange={e => setDraftFields({ ...draftFields, seasonTagsText: e.target.value })}
+                    onBlur={e => setForm({ ...form, seasonTags: parseCommaList(e.target.value) })}
                   />
                 </div>
               </div>
@@ -883,8 +1074,9 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
                   className="w-full border p-2 rounded"
                   rows={4}
                   placeholder="One step per line"
-                  value={toLineList(form.prepChecklist)}
-                  onChange={e => setForm({ ...form, prepChecklist: parseLineList(e.target.value) })}
+                  value={draftFields.prepChecklistText}
+                  onChange={e => setDraftFields({ ...draftFields, prepChecklistText: e.target.value })}
+                  onBlur={e => setForm({ ...form, prepChecklist: parseLineList(e.target.value) })}
                 />
               </div>
               
@@ -911,8 +1103,9 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
                      className="w-full border p-2 rounded"
                      rows={3}
                      placeholder="Plan B Steps (one per line)"
-                     value={toLineList(form.planB.steps)}
-                     onChange={e => setForm({ ...form, planB: { ...form.planB, steps: parseLineList(e.target.value) } })}
+                     value={draftFields.planBStepsText}
+                     onChange={e => setDraftFields({ ...draftFields, planBStepsText: e.target.value })}
+                     onBlur={e => setForm({ ...form, planB: { ...form.planB, steps: parseLineList(e.target.value) } })}
                    />
                    
                    <div className="grid grid-cols-2 gap-4">
@@ -926,8 +1119,9 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
                        <input
                          className="w-full border p-2 rounded"
                          placeholder="cozy, calm"
-                         value={toCommaList(form.planB.vibes || [])}
-                         onChange={e => setForm({ ...form, planB: { ...form.planB, vibes: parseCommaList(e.target.value) } })}
+                         value={draftFields.planBVibesText}
+                         onChange={e => setDraftFields({ ...draftFields, planBVibesText: e.target.value })}
+                         onBlur={e => setForm({ ...form, planB: { ...form.planB, vibes: parseCommaList(e.target.value) } })}
                        />
                      </div>
                      <div>
@@ -962,6 +1156,342 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
            </div>
         )}
      </div>
+  );
+}
+
+function AiSettingsModal({ onClose }) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [settings, setSettings] = useState({
+    hasApiKey: false,
+    apiKeyPreview: '',
+    apiKey: '',
+    textModel: '',
+    imageModel: ''
+  });
+  const [clearApiKey, setClearApiKey] = useState(false);
+
+  const loadSettings = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.get('/settings/ai');
+      setSettings({
+        ...res.data,
+        apiKey: '',
+        textModel: res.data.textModel || '',
+        imageModel: res.data.imageModel || ''
+      });
+    } catch (e) {
+      setError('Failed to load AI settings.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const saveSettings = async () => {
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      const payload = {
+        textModel: settings.textModel,
+        imageModel: settings.imageModel,
+        clearApiKey
+      };
+      if (settings.apiKey.trim()) {
+        payload.apiKey = settings.apiKey.trim();
+      }
+      const res = await api.put('/settings/ai', payload);
+      setSettings({
+        ...res.data,
+        apiKey: '',
+        textModel: res.data.textModel || '',
+        imageModel: res.data.imageModel || ''
+      });
+      setClearApiKey(false);
+      setSuccess('AI settings saved.');
+    } catch (e) {
+      setError(e.response?.data?.message || e.response?.data?.error || 'Failed to save AI settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const testConnection = async () => {
+    setTesting(true);
+    setError('');
+    setSuccess('');
+    try {
+      await api.post('/settings/ai/test');
+      setSuccess('Connection successful.');
+    } catch (e) {
+      setError(e.response?.data?.message || e.response?.data?.error || 'AI connection test failed.');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-stone-900/40 flex items-center justify-center p-4 z-50">
+      <div className="bg-white w-full max-w-lg rounded-xl shadow-xl p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-bold">AI Settings</h2>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-700">
+            <X size={18} />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="py-8 text-center text-stone-500 text-sm">Loading settings...</div>
+        ) : (
+          <div className="space-y-4">
+            {error && <div className="bg-red-50 text-red-600 text-sm p-2 rounded">{error}</div>}
+            {success && <div className="bg-emerald-50 text-emerald-700 text-sm p-2 rounded">{success}</div>}
+
+            <div className="rounded-lg border border-stone-200 p-3 bg-stone-50 text-sm">
+              <div className="font-medium">API key status</div>
+              <div className="text-stone-500 mt-1">
+                {settings.hasApiKey ? `Configured (${settings.apiKeyPreview})` : 'Not configured'}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-stone-500 mb-1">New API Key</label>
+              <input
+                type="password"
+                className="w-full border p-2 rounded"
+                value={settings.apiKey}
+                onChange={(e) => {
+                  setSettings({ ...settings, apiKey: e.target.value });
+                  if (e.target.value) setClearApiKey(false);
+                }}
+                placeholder="Paste new key to replace existing"
+              />
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-stone-600">
+              <input
+                type="checkbox"
+                checked={clearApiKey}
+                onChange={(e) => {
+                  setClearApiKey(e.target.checked);
+                  if (e.target.checked) {
+                    setSettings({ ...settings, apiKey: '' });
+                  }
+                }}
+              />
+              Clear stored API key
+            </label>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-stone-500 mb-1">Text Model</label>
+                <input
+                  className="w-full border p-2 rounded"
+                  value={settings.textModel}
+                  onChange={e => setSettings({ ...settings, textModel: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-stone-500 mb-1">Image Model</label>
+                <input
+                  className="w-full border p-2 rounded"
+                  value={settings.imageModel}
+                  onChange={e => setSettings({ ...settings, imageModel: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 mt-6">
+          <button onClick={onClose} className="px-3 py-2 text-stone-500">Close</button>
+          <button
+            onClick={testConnection}
+            disabled={loading || testing}
+            className="px-4 py-2 border rounded"
+          >
+            {testing ? 'Testing...' : 'Test Connection'}
+          </button>
+          <button
+            onClick={saveSettings}
+            disabled={loading || saving}
+            className="px-4 py-2 bg-stone-800 text-white rounded"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MediaManagerModal({ idea, onClose, onSelect }) {
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState([]);
+  const [currentImage, setCurrentImage] = useState('');
+  const [autoPrompt, setAutoPrompt] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [imageModel, setImageModel] = useState('');
+  const [error, setError] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [selectingMediaId, setSelectingMediaId] = useState('');
+
+  const loadMedia = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [mediaRes, promptRes, settingsRes] = await Promise.all([
+        api.get(`/ideas/${idea.id}/media`),
+        api.get(`/ideas/${idea.id}/media/auto-prompt`),
+        api.get('/settings/ai')
+      ]);
+      setItems(mediaRes.data.items || []);
+      setCurrentImage(mediaRes.data.currentImage || '');
+      const fetchedAutoPrompt = promptRes.data.prompt || '';
+      setAutoPrompt(fetchedAutoPrompt);
+      setPrompt(prev => prev || fetchedAutoPrompt);
+      setImageModel(settingsRes.data.imageModel || '');
+    } catch (e) {
+      setError(e.response?.data?.message || e.response?.data?.error || 'Failed to load media manager.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadMedia();
+  }, [idea.id]);
+
+  const generateImage = async () => {
+    setGenerating(true);
+    setError('');
+    try {
+      await api.post(`/ideas/${idea.id}/media/generate`, {
+        prompt,
+        promptAuto: autoPrompt,
+        model: imageModel
+      });
+      await loadMedia();
+    } catch (e) {
+      setError(e.response?.data?.message || e.response?.data?.error || 'Image generation failed.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const selectAsCover = async (mediaId) => {
+    setSelectingMediaId(mediaId);
+    setError('');
+    try {
+      const res = await api.post(`/ideas/${idea.id}/media/select`, { mediaId });
+      setCurrentImage(res.data.image || '');
+      if (onSelect) onSelect();
+    } catch (e) {
+      setError(e.response?.data?.message || e.response?.data?.error || 'Failed to select image.');
+    } finally {
+      setSelectingMediaId('');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-stone-900/50 z-50 p-4 flex items-center justify-center">
+      <div className="bg-white w-full max-w-5xl rounded-xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-4 border-b border-stone-200 flex justify-between items-center">
+          <div>
+            <h3 className="font-bold text-lg">Media Manager</h3>
+            <div className="text-sm text-stone-500">{idea.title}</div>
+          </div>
+          <button onClick={onClose} className="text-stone-500 hover:text-stone-800">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-4 border-b border-stone-200 bg-stone-50">
+          {error && <div className="bg-red-50 text-red-600 text-sm p-2 rounded mb-3">{error}</div>}
+          <div className="grid gap-3">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPrompt(autoPrompt)}
+                className="px-3 py-2 border rounded text-sm"
+              >
+                Autofill Smart Prompt
+              </button>
+              <button
+                type="button"
+                onClick={generateImage}
+                disabled={loading || generating}
+                className="px-3 py-2 bg-stone-800 text-white rounded text-sm"
+              >
+                {generating ? 'Generating...' : 'Generate'}
+              </button>
+            </div>
+            <textarea
+              className="w-full border p-2 rounded text-sm"
+              rows={4}
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              placeholder="Edit prompt and generate image"
+            />
+            <input
+              className="w-full md:w-96 border p-2 rounded text-sm"
+              value={imageModel}
+              onChange={e => setImageModel(e.target.value)}
+              placeholder="Image model"
+            />
+          </div>
+        </div>
+
+        <div className="p-4 overflow-auto">
+          {loading ? (
+            <div className="text-center text-stone-500 py-10">Loading media...</div>
+          ) : items.length === 0 ? (
+            <div className="text-center text-stone-500 py-10">No images yet.</div>
+          ) : (
+            <div className="grid md:grid-cols-2 gap-4">
+              {items.map((item) => (
+                <div key={item.id} className="border rounded-lg overflow-hidden bg-white">
+                  <div className="h-48 bg-stone-200">
+                    <img src={`/uploads/${item.filename}`} alt="Generated date" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="p-3 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <div className="text-xs text-stone-500">
+                        {item.source === 'AI' ? 'Generated' : 'Uploaded'} {item.model ? `• ${item.model}` : ''}
+                      </div>
+                      {item.filename === currentImage && (
+                        <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Current cover</span>
+                      )}
+                    </div>
+                    {item.promptUsed && (
+                      <div className="text-xs bg-stone-50 border border-stone-200 rounded p-2 whitespace-pre-wrap">
+                        Prompt used: {item.promptUsed}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => selectAsCover(item.id)}
+                      disabled={selectingMediaId === item.id}
+                      className="w-full px-3 py-2 border rounded text-sm hover:bg-stone-50"
+                    >
+                      {selectingMediaId === item.id ? 'Selecting...' : 'Set as cover'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

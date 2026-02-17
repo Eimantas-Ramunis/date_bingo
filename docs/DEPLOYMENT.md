@@ -16,9 +16,15 @@ See .env.example:
 	•	RATE_LIMIT_*
 	•	AI_ENABLED=true/false
 	•	AI_PROVIDER=gemini
-	•	GEMINI_API_KEY
+	•	GEMINI_API_KEY (optional fallback)
 	•	AI_OUTPUT_LANGUAGE=lt (enforced)
 	•	LOG_LEVEL
+
+AI Key Setup for GCP VPS
+	•	You can now leave GEMINI_API_KEY empty in `.env`.
+	•	After first login, open Admin → AI Settings and save the API key there.
+	•	The key is encrypted and stored in the local SQLite database volume (`/data`).
+	•	DB-stored key is used first; env key is only fallback.
 
 External Access
 

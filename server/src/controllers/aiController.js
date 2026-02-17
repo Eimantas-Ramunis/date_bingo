@@ -3,7 +3,7 @@ import prisma from '../utils/db.js';
 
 export const generateDraft = async (req, res, next) => {
   try {
-    const { steeringText, themes } = req.body || {};
+    const { steeringText, themes, customTheme } = req.body || {};
     const existingIdeas = await prisma.dateIdea.findMany({
       select: { title: true },
       orderBy: { createdAt: 'desc' },
@@ -13,6 +13,7 @@ export const generateDraft = async (req, res, next) => {
     const draft = await aiService.generateIdeaDraft({
       steeringText,
       themes,
+      customTheme,
       existingTitles
     });
     res.json(draft);

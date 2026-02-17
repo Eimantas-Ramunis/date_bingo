@@ -21,11 +21,11 @@ function RequireAuth({ children }) {
 
 function Home() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-stone-100 text-stone-600 p-4 text-center">
-      <div className="max-w-md bg-white p-8 rounded-xl shadow-sm">
-        <h1 className="text-xl font-serif font-bold text-stone-800 mb-2">DateBingo</h1>
+    <div className="min-h-screen flex items-center justify-center bg-stone-100 dark:bg-stone-950 text-stone-600 dark:text-stone-300 p-4 text-center">
+      <div className="max-w-md bg-white dark:bg-stone-900 p-8 rounded-xl shadow-sm border border-stone-200 dark:border-stone-700">
+        <h1 className="text-xl font-serif font-bold text-stone-800 dark:text-stone-100 mb-2">DateBingo</h1>
         <p className="italic mb-6">"Viskas gerai — nuorodą gausi iš Eimanto."</p>
-        <p className="text-xs text-stone-400">Waiting for a valid link...</p>
+        <p className="text-xs text-stone-400 dark:text-stone-500">Waiting for a valid link...</p>
       </div>
     </div>
   );

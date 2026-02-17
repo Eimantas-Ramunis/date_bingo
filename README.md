@@ -5,7 +5,7 @@ A self-hosted web app for planning dates, designed for Raspberry Pi.
 ## Features
 - **Admin Dashboard:** Manage ideas, plan dates, track bingo progress.
 - **Receiver Links:** Tokenized, secure links for Hints and Reveals (Lithuanian UI).
-- **AI Integration:** Google Gemini helps generate ideas and write teasers.
+- **AI Integration:** Google Gemini helps generate ideas, rewrite teasers, and generate date images.
 - **Offline-First:** SQLite database, local hosting.
 
 ## Quick Start (Docker)
@@ -13,8 +13,11 @@ A self-hosted web app for planning dates, designed for Raspberry Pi.
 1. **Configure Environment:**
    ```bash
    cp .env.example .env
-   # Edit .env and set your GEMINI_API_KEY and SESSION_SECRET
+   # Edit .env and set at least SESSION_SECRET
    ```
+
+   `GEMINI_API_KEY` is now optional in `.env`.
+   You can set/update the AI key from **Admin -> AI Settings** after first login.
 
 2. **Run:**
    ```bash
@@ -50,6 +53,7 @@ This app is designed to be port-forwarded.
 - **Rate Limiting:** Enabled by default.
 - **Auth:** Admin protected by session cookie.
 - **Tokens:** Links use 32-byte random tokens, hashed in DB.
+- **AI Key Storage:** Admin-entered API keys are encrypted and stored in SQLite.
 
 ## Tech Stack
 - **Backend:** Node.js, Express, Prisma, SQLite
