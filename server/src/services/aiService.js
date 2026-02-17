@@ -31,13 +31,15 @@ const fallbackIdeas = [
     duration: '2h',
     budget: 'low',
     prepChecklist: ['Pasiimti šiltą arbatą termosui', 'Pasirinkti maršrutą'],
+    planAPrepItems: ['Patikrinti orų prognozę', 'Paruošti termosą su arbata', 'Apgalvoti susitikimo laiką'],
     planB: {
       title: 'Namų kino vakaras',
       description: 'Filmų vakaras su užkandžiais ir žvakių šviesa.',
       steps: ['Išsirinkti filmą', 'Paruošti užkandžius', 'Uždegti žvakes'],
       vibes: ['cozy'],
       energy: 'low'
-    }
+    },
+    planBPrepItems: ['Nuspręsti filmą iš anksto', 'Nupirkti užkandžius', 'Paruošti jaukią erdvę']
   },
   {
     title: 'Mini degustacija namuose',
@@ -50,13 +52,15 @@ const fallbackIdeas = [
     duration: '1.5h',
     budget: 'med',
     prepChecklist: ['Pasirinkti 2 gėrimus', 'Paruošti užkandžių lėkštę'],
+    planAPrepItems: ['Nusipirkti degustacijos produktus', 'Paruošti taures ir įrankius', 'Atvėsinti gėrimus'],
     planB: {
       title: 'Kepinių popietė',
       description: 'Lengvai pagaminami sausainiai ir rami muzika.',
       steps: ['Pasiruošti ingredientus', 'Kepimo procesas', 'Skanauti kartu'],
       vibes: ['warm'],
       energy: 'low'
-    }
+    },
+    planBPrepItems: ['Patikrinti ingredientų likučius', 'Paruošti kepimo indus', 'Įjungti orkaitę prieš pradedant']
   }
 ];
 
@@ -233,6 +237,26 @@ const joinList = (items) => {
   return items.filter(Boolean).join(', ');
 };
 
+const sanitizeStringArray = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean);
+};
+
+const getPlanAPrepFallback = (idea) => {
+  const direct = sanitizeStringArray(idea?.planAPrepItems);
+  if (direct.length > 0) return direct;
+  return sanitizeStringArray(toArray(idea?.prepChecklist));
+};
+
+const getPlanBPrepFallback = (idea) => {
+  const direct = sanitizeStringArray(idea?.planBPrepItems);
+  if (direct.length > 0) return direct;
+  const planB = toObject(idea?.planB);
+  return sanitizeStringArray(toArray(planB?.steps));
+};
+
 export const buildIdeaImagePrompt = (idea) => {
   const planB = toObject(idea?.planB);
   const planASteps = toArray(idea?.prepChecklist);
@@ -357,15 +381,18 @@ export const generateIdeaDraft = async ({ steeringText, themes, customTheme, exi
           "duration": "String", 
           "budget": "String", 
           "prepChecklist": ["String"], 
+          "planAPrepItems": ["String"],
           "planB": { 
             "title": "String", 
             "description": "String", 
             "steps": ["String"], 
             "vibes": ["String"], 
             "energy": "low" 
-          }
+          },
+          "planBPrepItems": ["String"]
         }
         Rašyk lietuviškai. Naudok metrinius vienetus (pvz., "2 km", "45 min"). Aprašymas turi būti konkretus.
+        "prepChecklist" turi būti pasimatymo eiga (ką veiksite). "planAPrepItems" ir "planBPrepItems" turi būti pasiruošimo darbai (ką reikia padaryti iš anksto).
         
         Papildomas kontekstas (naudok kaip gaires, bet neperrašyk pažodžiui):
         ${normalizedSteering ? `Admin kryptis: ${normalizedSteering}` : 'Admin kryptis: (nepateikta)'}
@@ -388,6 +415,7 @@ export const generateIdeaDraft = async ({ steeringText, themes, customTheme, exi
       duration: { type: 'string' },
       budget: { type: 'string' },
       prepChecklist: { type: 'array', items: { type: 'string' } },
+      planAPrepItems: { type: 'array', items: { type: 'string' } },
       planB: {
         type: 'object',
         properties: {
@@ -398,9 +426,24 @@ export const generateIdeaDraft = async ({ steeringText, themes, customTheme, exi
           energy: { type: 'string' }
         },
         required: ['title', 'description', 'steps']
-      }
+      },
+      planBPrepItems: { type: 'array', items: { type: 'string' } }
     },
-    required: ['title', 'shortDescription', 'vibes', 'purposeTags', 'energy', 'seasonTags', 'radius', 'duration', 'budget', 'prepChecklist', 'planB']
+    required: [
+      'title',
+      'shortDescription',
+      'vibes',
+      'purposeTags',
+      'energy',
+      'seasonTags',
+      'radius',
+      'duration',
+      'budget',
+      'prepChecklist',
+      'planAPrepItems',
+      'planB',
+      'planBPrepItems'
+    ]
   };
 
   let text = await generateContent({
@@ -415,10 +458,101 @@ export const generateIdeaDraft = async ({ steeringText, themes, customTheme, exi
     if (!parsed || !parsed.title) {
       return pickFallbackIdea();
     }
-    return parsed;
+    return {
+      ...parsed,
+      planAPrepItems: sanitizeStringArray(parsed.planAPrepItems),
+      planBPrepItems: sanitizeStringArray(parsed.planBPrepItems)
+    };
   } catch (e) {
     console.error('Failed to parse AI JSON response.');
     return pickFallbackIdea();
+  }
+};
+
+export const generatePlanAPrepItems = async (idea = {}) => {
+  const fallback = getPlanAPrepFallback(idea);
+  const planB = toObject(idea?.planB);
+  const prompt = `Sukurk pasiruošimo darbų sąrašą Plan A pasimatymui.
+Grąžink TIK JSON masyvą su trumpomis užduotimis (be numeracijos, be markdown).
+
+Idėja:
+- Pavadinimas: ${normalizeString(idea?.title) || 'Nenurodyta'}
+- Aprašymas: ${normalizeString(idea?.shortDescription) || 'Nenurodyta'}
+- Vieta: ${normalizeString(idea?.radius) || 'Nenurodyta'}
+- Trukmė: ${normalizeString(idea?.duration) || 'Nenurodyta'}
+- Biudžetas: ${normalizeString(idea?.budget) || 'Nenurodyta'}
+- Plan A eiga: ${joinList(toArray(idea?.prepChecklist))}
+- Plan B pavadinimas: ${normalizeString(planB?.title) || 'Plan B'}
+- Plan B aprašymas: ${normalizeString(planB?.description) || normalizeString(planB?.shortDescription) || 'Nenurodyta'}
+
+Reikalavimai:
+- 5-10 konkrečių pasiruošimo užduočių.
+- Įtrauk rezervacijas, pirkinius, logistiką ir laiko planavimą, jei aktualu.
+- Jokios veiklos eigos - tik pasiruošimas iš anksto.`;
+
+  const schema = {
+    type: 'array',
+    items: { type: 'string' }
+  };
+
+  let text = await generateContent({
+    prompt,
+    systemInstruction: 'Tu esi pragmatiškas pasimatymų logistikos asistentas. Rašyk lietuviškai. Grąžink tik JSON masyvą.',
+    responseMimeType: 'application/json',
+    responseJsonSchema: schema
+  });
+  text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+  try {
+    const parsed = JSON.parse(text);
+    const cleaned = sanitizeStringArray(parsed);
+    return cleaned.length > 0 ? cleaned : fallback;
+  } catch (err) {
+    return fallback;
+  }
+};
+
+export const generatePlanBPrepItems = async (idea = {}) => {
+  const fallback = getPlanBPrepFallback(idea);
+  const planB = toObject(idea?.planB);
+  const prompt = `Sukurk pasiruošimo darbų sąrašą Plan B pasimatymui.
+Grąžink TIK JSON masyvą su trumpomis užduotimis (be numeracijos, be markdown).
+
+Plan B:
+- Pavadinimas: ${normalizeString(planB?.title) || 'Plan B'}
+- Aprašymas: ${normalizeString(planB?.description) || normalizeString(planB?.shortDescription) || 'Nenurodyta'}
+- Veiksmų eiga: ${joinList(toArray(planB?.steps))}
+- Vibes: ${joinList(toArray(planB?.vibes))}
+- Energija: ${normalizeString(planB?.energy) || 'Nenurodyta'}
+
+Bendras kontekstas:
+- Plan A pavadinimas: ${normalizeString(idea?.title) || 'Nenurodyta'}
+- Plan A vieta: ${normalizeString(idea?.radius) || 'Nenurodyta'}
+
+Reikalavimai:
+- 4-8 konkrečių pasiruošimo užduočių.
+- Akcentuok greitą, mažos trinties paruošimą namuose/atsarginiam planui.
+- Jokios veiklos eigos - tik pasiruošimas iš anksto.`;
+
+  const schema = {
+    type: 'array',
+    items: { type: 'string' }
+  };
+
+  let text = await generateContent({
+    prompt,
+    systemInstruction: 'Tu esi pragmatiškas pasimatymų logistikos asistentas. Rašyk lietuviškai. Grąžink tik JSON masyvą.',
+    responseMimeType: 'application/json',
+    responseJsonSchema: schema
+  });
+  text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+  try {
+    const parsed = JSON.parse(text);
+    const cleaned = sanitizeStringArray(parsed);
+    return cleaned.length > 0 ? cleaned : fallback;
+  } catch (err) {
+    return fallback;
   }
 };
 

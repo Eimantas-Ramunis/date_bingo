@@ -1,79 +1,83 @@
-Conventions
-	•	JSON request/response
-	•	Errors return: { error: { code, message } }
-	•	Admin endpoints require session auth
-	•	Receiver endpoints require token
+# API
 
-⸻
+## Conventions
+- Base path: `/api`
+- JSON request/response
+- Admin endpoints require session auth (`datebingo_sid` cookie)
+- Receiver endpoints use token payloads
 
-Admin Endpoints
+## Ideas
+- `GET /api/ideas`
+- `POST /api/ideas` (multipart; supports image)
+- `PUT /api/ideas/:id` (multipart; supports image)
+- `DELETE /api/ideas/:id`
+- `GET /api/ideas/:id/media`
+- `GET /api/ideas/:id/media/auto-prompt`
+- `POST /api/ideas/:id/media/generate`
+- `POST /api/ideas/:id/media/select`
+- `POST /api/ideas/:id/prep/generate/plan-a`
+- `POST /api/ideas/:id/prep/generate/plan-b`
 
-Ideas
-	•	GET /api/admin/ideas
-	•	POST /api/admin/ideas
-	•	PUT /api/admin/ideas/:id
-	•	DELETE /api/admin/ideas/:id
+### Idea prep fields
+- `planAPrepItems: string[]` (idea-level editable preparation list)
+- `planBPrepItems: string[]` (idea-level editable preparation list)
 
-Planning
-	•	POST /api/admin/plan/suggest
-	•	Input: optional constraints { budgetCap, energy, radius, seasonTags, purposeTags, vibes }
-	•	Output: { candidates: [ideaSummary...] }
-	•	POST /api/admin/plan/select
-	•	Input: { ideaId }
-	•	Output: { plannedDate }
-	•	GET /api/admin/plan/next
-	•	Output: { plannedDate | null }
+## Planning
+- `GET /api/planning/current`
+- `GET /api/planning/ideas`
+- `GET /api/planning/suggest`
+- `POST /api/planning/select`
+- `PATCH /api/planning/:id/prep-item-status`
+- `POST /api/planning/token`
+- `POST /api/planning/preview-token`
+- `GET /api/planning/history`
+- `POST /api/planning/:id/done`
+- `DELETE /api/planning/:id`
 
-Tokens / Links
-	•	POST /api/admin/plan/token/hint
-	•	POST /api/admin/plan/token/reveal
-	•	Output: { url } (constructed with BASE_URL + path)
+### Prep board status update
+`PATCH /api/planning/:id/prep-item-status`
 
-Completion
-	•	POST /api/admin/plan/done
-	•	Input: { plannedDateId, toggles: { touchDone, noPhones60, laughed, honestSentence, newThing }, rating?, notes? }
+Body:
+```json
+{
+  "planType": "A",
+  "itemId": "uuid",
+  "status": "doing"
+}
+```
 
-AI (Admin-only)
-	•	POST /api/admin/ai/generate-idea
-	•	Input: { promptSeed?, constraints? }
-	•	Output: { draftIdea } (LT by default or bilingual as configured)
-	•	POST /api/admin/ai/rewrite-hint
-	•	Input: { hint, contextTags }
-	•	Output: { teaserLt, dressCodeLt?, durationTextLt? }
-	•	POST /api/admin/ai/rewrite-description
-	•	Input: { text, target: 'LT'|'EN', style: 'short'|'cozy'|'playful' }
+Constraints:
+- `planType`: `"A" | "B"`
+- `status`: `"to_do" | "doing" | "done"`
 
-⸻
+Response:
+```json
+{
+  "planAPrepBoard": [{ "id": "...", "text": "...", "status": "to_do" }],
+  "planBPrepBoard": [{ "id": "...", "text": "...", "status": "done" }]
+}
+```
 
-Receiver Endpoints (token-based)
+## AI
+- `POST /api/ai/draft`
+- `POST /api/ai/rewrite-teaser`
 
-Hint view data
-	•	GET /api/r/:token
-	•	Token resolves to either hint or reveal payload depending on token type.
-	•	Output (Hint):
+### Draft output additions
+`POST /api/ai/draft` now includes:
+- `planAPrepItems: string[]`
+- `planBPrepItems: string[]`
 
-    {
-  "mode": "HINT",
-  "startTimeWindow": "Rytoj 12:00–18:00",
-  "dressCode": "Šilta apranga, batai",
-  "duration": "~4 val.",
-  "teaserLine": "Maža išvyka + jaukus vakaras.",
-  "canVeto": false
-    }
+Existing fields (`prepChecklist`, `planB.steps`) are unchanged.
 
-    Reveal view data
-	•	Output (Reveal):
+## Settings
+- `GET /api/settings/ai`
+- `PUT /api/settings/ai`
+- `POST /api/settings/ai/test`
 
-    {
-  "mode": "REVEAL",
-  "planA": { "title": "...", "steps": ["..."] },
-  "planB": { "title": "...", "steps": ["..."] },
-  "planBActive": false,
-  "canVeto": true
-    }
+## Receiver
+- `GET /api/receiver?token=...`
+- `POST /api/receiver/veto`
 
-    Veto
-	•	POST /api/r/:token/veto
-	•	Input: { reason: "too_tired" | "too_cold" | "not_social" | "not_today" }
-	•	Output: reveal payload with planBActive=true
-	•	Important: Plan A summary returned after veto must be generic/de-hyped.
+## Bingo
+- `GET /api/bingo`
+- `POST /api/bingo/reset`

@@ -6,6 +6,7 @@ A self-hosted web app for planning dates, designed for Raspberry Pi.
 - **Admin Dashboard:** Manage ideas, plan dates, track bingo progress.
 - **Receiver Links:** Tokenized, secure links for Hints and Reveals (Lithuanian UI).
 - **AI Integration:** Google Gemini helps generate ideas, rewrite teasers, and generate date images.
+- **Preparation Planning:** Maintain separate Plan A/Plan B prep lists on ideas and track active plan progress on a To do/Doing/Done board.
 - **Offline-First:** SQLite database, local hosting.
 
 ## Quick Start (Docker)

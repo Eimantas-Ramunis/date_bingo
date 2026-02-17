@@ -29,6 +29,8 @@ model DateIdea {
   duration         String
   budget           String
   prepChecklist    String // JSON array
+  planAPrepItems   String        @default("[]") // JSON array of strings
+  planBPrepItems   String        @default("[]") // JSON array of strings
   planB            String // JSON object: { title, description, steps: [] }
   cooldownDays     Int           @default(45)
   lastDoneAt       DateTime?
@@ -52,6 +54,8 @@ model PlannedDate {
   // Reveal fields
   planASteps      String // JSON array
   planBSteps      String // JSON array (cached from idea at plan time)
+  planAPrepBoard  String    @default("[]") // JSON array of { id, text, status }
+  planBPrepBoard  String    @default("[]") // JSON array of { id, text, status }
   planBTitle      String // Cached
   planBDesc       String // Cached
   

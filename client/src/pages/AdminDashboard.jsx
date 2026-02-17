@@ -4,7 +4,7 @@ import { useTheme } from '../theme';
 import {
   Calendar, Shuffle, CheckCircle, Plus, Sparkles, LogOut,
   LayoutGrid, History, Trash2, Edit, X, ArrowRight, ArrowLeft,
-  KeyRound, Settings2, ImagePlus, Moon, Sun
+  KeyRound, Settings2, ImagePlus, Moon, Sun, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 const TABS = [
@@ -33,6 +33,12 @@ const AI_THEMES = [
   { id: 'memory-lane', label: 'Memory Lane' },
   { id: 'nature-escape', label: 'Nature Escape' },
   { id: 'social-light', label: 'Social Light' }
+];
+
+const PREP_COLUMNS = [
+  { id: 'to_do', label: 'To do' },
+  { id: 'doing', label: 'Doing' },
+  { id: 'done', label: 'Done' }
 ];
 
 export default function AdminDashboard() {
@@ -166,7 +172,7 @@ function PlanTab({ currentPlan, refresh }) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-[1500px] w-full mx-auto">
       <h2 className="text-2xl font-serif font-bold text-stone-800 mb-6">Plan Next Date</h2>
       
       {suggestions.length === 0 ? (
@@ -417,6 +423,19 @@ function ActivePlanView({ plan, refresh }) {
   const [completing, setCompleting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [previewLinks, setPreviewLinks] = useState({ hint: '', reveal: '' });
+  const [prepItemSize, setPrepItemSize] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem('datebingo.prepItemSize');
+      return saved === 'sm' || saved === 'lg' ? saved : 'md';
+    } catch (err) {
+      return 'md';
+    }
+  });
+  const [prepBoards, setPrepBoards] = useState({
+    A: plan.planAPrepBoard || [],
+    B: plan.planBPrepBoard || []
+  });
+  const [updatingPrepKey, setUpdatingPrepKey] = useState('');
 
   // ✅ Robust clipboard helper:
   // - Works on HTTPS + localhost with navigator.clipboard
@@ -492,6 +511,21 @@ function ActivePlanView({ plan, refresh }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan.id]);
 
+  useEffect(() => {
+    setPrepBoards({
+      A: Array.isArray(plan.planAPrepBoard) ? plan.planAPrepBoard : [],
+      B: Array.isArray(plan.planBPrepBoard) ? plan.planBPrepBoard : []
+    });
+  }, [plan.planAPrepBoard, plan.planBPrepBoard, plan.id]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('datebingo.prepItemSize', prepItemSize);
+    } catch (err) {
+      // Ignore storage failures
+    }
+  }, [prepItemSize]);
+
   const cancelPlan = async () => {
     if (!confirm('Cancel this plan? Links will stop working.')) return;
     setCancelling(true);
@@ -506,11 +540,31 @@ function ActivePlanView({ plan, refresh }) {
     }
   };
 
+  const updatePrepStatus = async (planType, itemId, status) => {
+    setUpdatingPrepKey(`${planType}:${itemId}`);
+    try {
+      const res = await api.patch(`/planning/${plan.id}/prep-item-status`, {
+        planType,
+        itemId,
+        status
+      });
+      setPrepBoards({
+        A: res.data.planAPrepBoard || [],
+        B: res.data.planBPrepBoard || []
+      });
+    } catch (e) {
+      console.error(e);
+      alert(e.response?.data?.error || 'Failed to update prep item status');
+    } finally {
+      setUpdatingPrepKey('');
+    }
+  };
+
   if (completing)
     return <CompleteForm plan={plan} onCancel={() => setCompleting(false)} onSuccess={refresh} />;
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-[1500px] w-full mx-auto">
       <div className="flex justify-between items-start mb-6">
         <div>
           <div className="flex gap-2 mb-2">
@@ -536,7 +590,19 @@ function ActivePlanView({ plan, refresh }) {
             </div>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex items-center gap-2 bg-white border border-stone-200 rounded px-2 py-1">
+            <span className="text-xs text-stone-500">Prep Item Size</span>
+            <select
+              value={prepItemSize}
+              onChange={(e) => setPrepItemSize(e.target.value)}
+              className="text-xs border border-stone-300 rounded px-2 py-1 bg-white"
+            >
+              <option value="sm">Compact</option>
+              <option value="md">Comfortable</option>
+              <option value="lg">Spacious</option>
+            </select>
+          </div>
           <button
             onClick={cancelPlan}
             disabled={cancelling}
@@ -553,8 +619,8 @@ function ActivePlanView({ plan, refresh }) {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-12">
+        <div className="space-y-6 xl:col-span-5">
           <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 space-y-4">
             <h3 className="font-bold border-b pb-2">Links</h3>
 
@@ -639,28 +705,131 @@ function ActivePlanView({ plan, refresh }) {
           )}
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 h-fit">
-          <h3 className="font-bold border-b pb-2 mb-4">Plan A Details</h3>
-          <div className="space-y-2 text-sm">
-            <div className="grid grid-cols-3">
-              <span className="text-stone-500">Teaser</span>{' '}
-              <span className="col-span-2 italic">{plan.hintTeaser}</span>
-            </div>
-            <div className="grid grid-cols-3">
-              <span className="text-stone-500">Time</span>{' '}
-              <span className="col-span-2">{plan.hintStartTime}</span>
-            </div>
-            <div className="grid grid-cols-3">
-              <span className="text-stone-500">Dress</span>{' '}
-              <span className="col-span-2">{plan.hintDressCode}</span>
-            </div>
-            <div className="grid grid-cols-3">
-              <span className="text-stone-500">Duration</span>{' '}
-              <span className="col-span-2">{plan.hintDuration}</span>
+        <div className="space-y-6 xl:col-span-7">
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 h-fit">
+            <h3 className="font-bold border-b pb-2 mb-4">Plan A Details</h3>
+            <div className="space-y-2 text-sm">
+              <div className="grid grid-cols-3">
+                <span className="text-stone-500">Teaser</span>{' '}
+                <span className="col-span-2 italic">{plan.hintTeaser}</span>
+              </div>
+              <div className="grid grid-cols-3">
+                <span className="text-stone-500">Time</span>{' '}
+                <span className="col-span-2">{plan.hintStartTime}</span>
+              </div>
+              <div className="grid grid-cols-3">
+                <span className="text-stone-500">Dress</span>{' '}
+                <span className="col-span-2">{plan.hintDressCode}</span>
+              </div>
+              <div className="grid grid-cols-3">
+                <span className="text-stone-500">Duration</span>{' '}
+                <span className="col-span-2">{plan.hintDuration}</span>
+              </div>
             </div>
           </div>
+
+          <PrepBoard
+            title="Plan A Preparation"
+            items={prepBoards.A}
+            planType="A"
+            highlighted={!plan.planBActive}
+            itemSize={prepItemSize}
+            updatingPrepKey={updatingPrepKey}
+            onStatusChange={updatePrepStatus}
+          />
+          <PrepBoard
+            title="Plan B Preparation"
+            items={prepBoards.B}
+            planType="B"
+            highlighted={plan.planBActive}
+            itemSize={prepItemSize}
+            updatingPrepKey={updatingPrepKey}
+            onStatusChange={updatePrepStatus}
+          />
         </div>
       </div>
+    </div>
+  );
+}
+
+function PrepBoard({ title, items, planType, highlighted, itemSize, updatingPrepKey, onStatusChange }) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const sizeClasses = {
+    sm: {
+      wrapper: 'p-4',
+      column: 'p-2',
+      item: 'p-1.5',
+      text: 'text-xs',
+      button: 'px-1.5 py-0.5 text-[10px]'
+    },
+    md: {
+      wrapper: 'p-5',
+      column: 'p-3',
+      item: 'p-2',
+      text: 'text-sm',
+      button: 'px-2 py-1 text-[11px]'
+    },
+    lg: {
+      wrapper: 'p-6',
+      column: 'p-4',
+      item: 'p-3',
+      text: 'text-base',
+      button: 'px-2.5 py-1.5 text-xs'
+    }
+  };
+  const classes = sizeClasses[itemSize] || sizeClasses.md;
+
+  return (
+    <div className={`bg-white rounded-xl shadow-sm border ${classes.wrapper} ${highlighted ? 'border-amber-300 ring-2 ring-amber-100' : 'border-stone-200'}`}>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-bold">{title}</h3>
+        <span className="text-xs text-stone-500">{safeItems.length} items</span>
+      </div>
+
+      {safeItems.length === 0 ? (
+        <div className="text-sm text-stone-500 bg-stone-50 border border-dashed border-stone-200 rounded-lg p-3">
+          No preparation items yet.
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-3 gap-3">
+          {PREP_COLUMNS.map((column) => {
+            const columnItems = safeItems.filter((item) => item?.status === column.id);
+            return (
+              <div key={column.id} className={`bg-stone-50 rounded-lg border border-stone-200 space-y-2 ${classes.column}`}>
+                <div className="font-semibold text-sm text-stone-700">{column.label}</div>
+                {columnItems.length === 0 && (
+                  <div className="text-xs text-stone-400">No items</div>
+                )}
+                {columnItems.map((item) => {
+                  const currentKey = `${planType}:${item.id}`;
+                  const isUpdating = updatingPrepKey === currentKey;
+                  return (
+                    <div key={item.id} className={`bg-white border border-stone-200 rounded space-y-2 ${classes.item}`}>
+                      <div className={`${classes.text} text-stone-700`}>{item.text}</div>
+                      <div className="flex gap-1">
+                        {PREP_COLUMNS.map((target) => (
+                          <button
+                            key={target.id}
+                            onClick={() => onStatusChange(planType, item.id, target.id)}
+                            disabled={isUpdating || target.id === item.status}
+                            className={`${classes.button} rounded border ${
+                              item.status === target.id
+                                ? 'bg-stone-800 text-white border-stone-800'
+                                : 'bg-white text-stone-600 border-stone-300 hover:bg-stone-100'
+                            } disabled:opacity-50`}
+                          >
+                            {target.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -708,6 +877,7 @@ function DeckTab() {
   const [showAdd, setShowAdd] = useState(false);
   const [editingIdea, setEditingIdea] = useState(null);
   const [mediaIdea, setMediaIdea] = useState(null);
+  const [expandedIdeaId, setExpandedIdeaId] = useState(null);
 
   useEffect(() => { loadIdeas(); }, []);
   const loadIdeas = () => api.get('/ideas').then(res => setIdeas(res.data));
@@ -743,44 +913,94 @@ function DeckTab() {
       )}
 
       <div className="grid gap-4">
-        {ideas.map(idea => (
-          <div key={idea.id} className="bg-white p-4 rounded-lg border border-stone-200 shadow-sm flex justify-between items-start">
-             <div>
-               <h3 className="font-bold">{idea.title}</h3>
-               <p className="text-stone-600 text-sm">{idea.shortDescription}</p>
-               <div className="flex gap-2 mt-2">
-                  <span className={`text-xs px-2 py-0.5 rounded ${idea.energy === 'high' ? 'bg-orange-100' : 'bg-blue-100'}`}>{idea.energy}</span>
-                  <span className="text-xs bg-stone-100 px-2 py-0.5 rounded text-stone-500">{idea.duration}</span>
-               </div>
-             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setShowAdd(false);
-                  setEditingIdea(idea);
-                }}
-                className="text-stone-400 hover:text-stone-700"
-                aria-label="Edit idea"
-              >
-                <Edit size={16} />
-              </button>
-              <button
-                onClick={() => setMediaIdea(idea)}
-                className="text-stone-400 hover:text-stone-700"
-                aria-label="Media manager"
-              >
-                <ImagePlus size={16} />
-              </button>
-              <button
-                onClick={() => { if(confirm('Delete?')) api.delete(`/ideas/${idea.id}`).then(loadIdeas); }}
-                className="text-stone-400 hover:text-red-500"
-                aria-label="Delete idea"
-              >
-                <Trash2 size={16} />
-              </button>
+        {ideas.map(idea => {
+          const isExpanded = expandedIdeaId === idea.id;
+          const planAPrepItems = Array.isArray(idea.planAPrepItems) ? idea.planAPrepItems : [];
+          const planBPrepItems = Array.isArray(idea.planBPrepItems) ? idea.planBPrepItems : [];
+
+          return (
+            <div key={idea.id} className="bg-white rounded-lg border border-stone-200 shadow-sm">
+              <div className="p-4 flex justify-between items-start gap-3">
+                <button
+                  onClick={() => setExpandedIdeaId(isExpanded ? null : idea.id)}
+                  className="text-left flex-1"
+                >
+                  <h3 className="font-bold">{idea.title}</h3>
+                  <p className="text-stone-600 text-sm">{idea.shortDescription}</p>
+                  <div className="flex gap-2 mt-2">
+                    <span className={`text-xs px-2 py-0.5 rounded ${idea.energy === 'high' ? 'bg-orange-100' : 'bg-blue-100'}`}>{idea.energy}</span>
+                    <span className="text-xs bg-stone-100 px-2 py-0.5 rounded text-stone-500">{idea.duration}</span>
+                  </div>
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setExpandedIdeaId(isExpanded ? null : idea.id)}
+                    className="text-stone-400 hover:text-stone-700"
+                    aria-label="Toggle details"
+                  >
+                    {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowAdd(false);
+                      setEditingIdea(idea);
+                    }}
+                    className="text-stone-400 hover:text-stone-700"
+                    aria-label="Edit idea"
+                  >
+                    <Edit size={16} />
+                  </button>
+                  <button
+                    onClick={() => setMediaIdea(idea)}
+                    className="text-stone-400 hover:text-stone-700"
+                    aria-label="Media manager"
+                  >
+                    <ImagePlus size={16} />
+                  </button>
+                  <button
+                    onClick={() => { if(confirm('Delete?')) api.delete(`/ideas/${idea.id}`).then(loadIdeas); }}
+                    className="text-stone-400 hover:text-red-500"
+                    aria-label="Delete idea"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="border-t border-stone-200 p-4 bg-stone-50 space-y-4">
+                  {idea.image && (
+                    <div className="h-48 rounded-lg overflow-hidden bg-stone-200">
+                      <img src={`/uploads/${idea.image}`} alt={idea.title} className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-white border border-stone-200 rounded-lg p-3">
+                      <h4 className="font-semibold mb-2">Plan A Preparation</h4>
+                      {planAPrepItems.length === 0 ? (
+                        <div className="text-xs text-stone-500">No items yet.</div>
+                      ) : (
+                        <ul className="space-y-1 text-sm text-stone-700">
+                          {planAPrepItems.map((item, idx) => <li key={`${idea.id}-a-${idx}`}>• {item}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="bg-white border border-stone-200 rounded-lg p-3">
+                      <h4 className="font-semibold mb-2">Plan B Preparation</h4>
+                      {planBPrepItems.length === 0 ? (
+                        <div className="text-xs text-stone-500">No items yet.</div>
+                      ) : (
+                        <ul className="space-y-1 text-sm text-stone-700">
+                          {planBPrepItems.map((item, idx) => <li key={`${idea.id}-b-${idx}`}>• {item}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {mediaIdea && (
@@ -798,7 +1018,7 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     title: '', shortDescription: '', vibes: [], purposeTags: [], energy: 'med', seasonTags: [],
-    radius: 'Vilnius', duration: '', budget: '', prepChecklist: [],
+    radius: 'Vilnius', duration: '', budget: '', prepChecklist: [], planAPrepItems: [], planBPrepItems: [],
     planB: { title: '', description: '', steps: [], location: 'Home', duration: '', vibes: [], energy: 'low' }
   });
   const [draftFields, setDraftFields] = useState({
@@ -806,11 +1026,15 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
     purposeTagsText: '',
     seasonTagsText: '',
     prepChecklistText: '',
+    planAPrepItemsText: '',
+    planBPrepItemsText: '',
     planBStepsText: '',
     planBVibesText: ''
   });
   const [imageFile, setImageFile] = useState(null);
   const [generating, setGenerating] = useState(false);
+  const [generatingPlanAPrep, setGeneratingPlanAPrep] = useState(false);
+  const [generatingPlanBPrep, setGeneratingPlanBPrep] = useState(false);
   const [aiSteeringText, setAiSteeringText] = useState('');
   const [aiThemes, setAiThemes] = useState([]);
   const [aiCustomTheme, setAiCustomTheme] = useState('');
@@ -832,6 +1056,8 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
     purposeTagsText: toCommaList(sourceForm.purposeTags),
     seasonTagsText: toCommaList(sourceForm.seasonTags),
     prepChecklistText: toLineList(sourceForm.prepChecklist),
+    planAPrepItemsText: toLineList(sourceForm.planAPrepItems || []),
+    planBPrepItemsText: toLineList(sourceForm.planBPrepItems || []),
     planBStepsText: toLineList(sourceForm.planB?.steps || []),
     planBVibesText: toCommaList(sourceForm.planB?.vibes || [])
   });
@@ -842,6 +1068,8 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
     purposeTags: parseCommaList(sourceDrafts.purposeTagsText),
     seasonTags: parseCommaList(sourceDrafts.seasonTagsText),
     prepChecklist: parseLineList(sourceDrafts.prepChecklistText),
+    planAPrepItems: parseLineList(sourceDrafts.planAPrepItemsText),
+    planBPrepItems: parseLineList(sourceDrafts.planBPrepItemsText),
     planB: {
       ...sourceForm.planB,
       steps: parseLineList(sourceDrafts.planBStepsText),
@@ -867,6 +1095,8 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
       duration: initialIdea.duration || '',
       budget: initialIdea.budget || '',
       prepChecklist: initialIdea.prepChecklist || [],
+      planAPrepItems: initialIdea.planAPrepItems || [],
+      planBPrepItems: initialIdea.planBPrepItems || [],
       planB: {
         title: planB.title || '',
         description: planB.description || planB.shortDescription || '',
@@ -894,6 +1124,8 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
       const merged = {
         ...normalized,
         ...res.data,
+        planAPrepItems: Array.isArray(res.data.planAPrepItems) ? res.data.planAPrepItems : normalized.planAPrepItems,
+        planBPrepItems: Array.isArray(res.data.planBPrepItems) ? res.data.planBPrepItems : normalized.planBPrepItems,
         planB: {
           ...normalized.planB,
           ...planB,
@@ -914,6 +1146,39 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
         ? prev.filter(id => id !== themeId)
         : [...prev, themeId]
     ));
+  };
+
+  const generatePrep = async (planType) => {
+    if (!isEditing || !initialIdea?.id) return;
+
+    if (planType === 'A') {
+      setGeneratingPlanAPrep(true);
+    } else {
+      setGeneratingPlanBPrep(true);
+    }
+
+    try {
+      const endpoint = planType === 'A'
+        ? `/ideas/${initialIdea.id}/prep/generate/plan-a`
+        : `/ideas/${initialIdea.id}/prep/generate/plan-b`;
+      const res = await api.post(endpoint);
+      const nextForm = {
+        ...form,
+        ...(planType === 'A'
+          ? { planAPrepItems: res.data.planAPrepItems || [] }
+          : { planBPrepItems: res.data.planBPrepItems || [] })
+      };
+      setForm(nextForm);
+      setDraftFields(getDraftFields(nextForm));
+    } catch (e) {
+      alert(e.response?.data?.error || 'Failed to generate preparation items');
+    } finally {
+      if (planType === 'A') {
+        setGeneratingPlanAPrep(false);
+      } else {
+        setGeneratingPlanBPrep(false);
+      }
+    }
   };
 
   const save = async () => {
@@ -1079,6 +1344,30 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
                   onBlur={e => setForm({ ...form, prepChecklist: parseLineList(e.target.value) })}
                 />
               </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold uppercase text-stone-400">Plan A Preparation Items</label>
+                  {isEditing && (
+                    <button
+                      type="button"
+                      onClick={() => generatePrep('A')}
+                      disabled={generatingPlanAPrep}
+                      className="text-xs bg-stone-100 hover:bg-stone-200 text-stone-700 px-2 py-1 rounded"
+                    >
+                      {generatingPlanAPrep ? 'Generating...' : 'Generate Plan A Prep'}
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  className="w-full border p-2 rounded"
+                  rows={4}
+                  placeholder="One preparation item per line"
+                  value={draftFields.planAPrepItemsText}
+                  onChange={e => setDraftFields({ ...draftFields, planAPrepItemsText: e.target.value })}
+                  onBlur={e => setForm({ ...form, planAPrepItems: parseLineList(e.target.value) })}
+                />
+              </div>
               
            </div>
         )}
@@ -1107,6 +1396,29 @@ function IdeaForm({ initialIdea, onCancel, onSuccess }) {
                      onChange={e => setDraftFields({ ...draftFields, planBStepsText: e.target.value })}
                      onBlur={e => setForm({ ...form, planB: { ...form.planB, steps: parseLineList(e.target.value) } })}
                    />
+                   <div>
+                     <div className="flex items-center justify-between mb-1">
+                       <label className="block text-xs font-bold uppercase text-stone-400">Plan B Preparation Items</label>
+                       {isEditing && (
+                         <button
+                           type="button"
+                           onClick={() => generatePrep('B')}
+                           disabled={generatingPlanBPrep}
+                           className="text-xs bg-yellow-100 hover:bg-yellow-200 text-yellow-900 px-2 py-1 rounded"
+                         >
+                           {generatingPlanBPrep ? 'Generating...' : 'Generate Plan B Prep'}
+                         </button>
+                       )}
+                     </div>
+                     <textarea
+                       className="w-full border p-2 rounded"
+                       rows={3}
+                       placeholder="One preparation item per line"
+                       value={draftFields.planBPrepItemsText}
+                       onChange={e => setDraftFields({ ...draftFields, planBPrepItemsText: e.target.value })}
+                       onBlur={e => setForm({ ...form, planBPrepItems: parseLineList(e.target.value) })}
+                     />
+                   </div>
                    
                    <div className="grid grid-cols-2 gap-4">
                      <input className="border p-2 rounded" placeholder="Location (e.g. Home)" value={form.planB.location || ''} onChange={e => setForm({...form, planB: {...form.planB, location: e.target.value}})} />

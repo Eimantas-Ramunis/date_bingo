@@ -1,7 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 
-import { buildIdeaImagePrompt, generateIdeaImage } from '../services/aiService.js';
+import {
+  buildIdeaImagePrompt,
+  generateIdeaImage,
+  generatePlanAPrepItems,
+  generatePlanBPrepItems
+} from '../services/aiService.js';
 import prisma from '../utils/db.js';
 import { getUploadDir } from '../utils/uploads.js';
 
@@ -23,6 +28,8 @@ const parseIdea = (idea) => ({
   purposeTags: parseJson(idea.purposeTags, []),
   seasonTags: parseJson(idea.seasonTags, []),
   prepChecklist: parseJson(idea.prepChecklist, []),
+  planAPrepItems: parseJson(idea.planAPrepItems, parseJson(idea.prepChecklist, [])),
+  planBPrepItems: parseJson(idea.planBPrepItems, []),
   planB: parseJson(idea.planB, {})
 });
 
@@ -86,6 +93,8 @@ export const createIdea = async (req, res, next) => {
           purposeTags: JSON.stringify(parseJson(data.purposeTags, [])),
           seasonTags: JSON.stringify(parseJson(data.seasonTags, [])),
           prepChecklist: JSON.stringify(parseJson(data.prepChecklist, [])),
+          planAPrepItems: JSON.stringify(parseJson(data.planAPrepItems, parseJson(data.prepChecklist, []))),
+          planBPrepItems: JSON.stringify(parseJson(data.planBPrepItems, [])),
           planB: JSON.stringify(parseJson(data.planB, {}))
         }
       });
@@ -127,6 +136,8 @@ export const updateIdea = async (req, res, next) => {
       purposeTags: JSON.stringify(parseJson(data.purposeTags, [])),
       seasonTags: JSON.stringify(parseJson(data.seasonTags, [])),
       prepChecklist: JSON.stringify(parseJson(data.prepChecklist, [])),
+      planAPrepItems: JSON.stringify(parseJson(data.planAPrepItems, parseJson(data.prepChecklist, []))),
+      planBPrepItems: JSON.stringify(parseJson(data.planBPrepItems, [])),
       planB: JSON.stringify(parseJson(data.planB, {}))
     };
 
@@ -277,6 +288,54 @@ export const selectIdeaMedia = async (req, res, next) => {
       success: true,
       image: media.filename
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const generateIdeaPlanAPrep = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const idea = await prisma.dateIdea.findUnique({ where: { id } });
+    if (!idea) {
+      return res.status(404).json({ error: 'Idea not found' });
+    }
+
+    const parsedIdea = parseIdea(idea);
+    const items = await generatePlanAPrepItems(parsedIdea);
+
+    await prisma.dateIdea.update({
+      where: { id },
+      data: {
+        planAPrepItems: JSON.stringify(items)
+      }
+    });
+
+    res.json({ planAPrepItems: items });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const generateIdeaPlanBPrep = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const idea = await prisma.dateIdea.findUnique({ where: { id } });
+    if (!idea) {
+      return res.status(404).json({ error: 'Idea not found' });
+    }
+
+    const parsedIdea = parseIdea(idea);
+    const items = await generatePlanBPrepItems(parsedIdea);
+
+    await prisma.dateIdea.update({
+      where: { id },
+      data: {
+        planBPrepItems: JSON.stringify(items)
+      }
+    });
+
+    res.json({ planBPrepItems: items });
   } catch (err) {
     next(err);
   }

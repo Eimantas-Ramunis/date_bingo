@@ -9,6 +9,7 @@ router.get('/current', planningController.getCurrentPlan);
 router.get('/ideas', planningController.listPlanningIdeas);
 router.get('/suggest', planningController.suggestIdeas);
 router.post('/select', planningController.selectIdea);
+router.patch('/:id/prep-item-status', planningController.updatePrepItemStatus);
 router.post('/token', planningController.generateToken);
 router.post('/preview-token', planningController.generatePreviewToken);
 router.get('/history', planningController.getHistory);
