@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Shield, Clock, Sun, MapPin, Gift } from 'lucide-react';
+import { Shield, Clock, Sun, MapPin, Gift, Moon } from 'lucide-react';
 import api from '../api';
+import { useTheme } from '../theme';
 
 export default function ReceiverView() {
+  const { theme, toggleTheme } = useTheme();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const [data, setData] = useState(null);
@@ -57,12 +59,25 @@ export default function ReceiverView() {
     }
   };
 
+  const renderWithTheme = (content) => (
+    <>
+      <button
+        onClick={toggleTheme}
+        className="fixed top-4 right-4 z-50 bg-black/20 text-white backdrop-blur px-3 py-2 rounded-full text-xs font-medium hover:bg-black/30"
+      >
+        {theme === 'dark' ? <Sun size={14} className="inline mr-1" /> : <Moon size={14} className="inline mr-1" />}
+        {theme === 'dark' ? 'Light' : 'Dark'}
+      </button>
+      {content}
+    </>
+  );
+
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-stone-50">Kraunama...</div>;
+    return renderWithTheme(<div className="min-h-screen flex items-center justify-center bg-stone-50">Kraunama...</div>);
   }
 
   if (error) {
-    return <div className="min-h-screen flex items-center justify-center bg-stone-50 text-red-600">{error}</div>;
+    return renderWithTheme(<div className="min-h-screen flex items-center justify-center bg-stone-50 text-red-600">{error}</div>);
   }
 
   if (!data) return null;
@@ -88,7 +103,7 @@ export default function ReceiverView() {
   };
 
   if (type === 'HINT') {
-    return (
+    return renderWithTheme(
       <div className="min-h-screen bg-stone-100 p-6 flex flex-col items-center justify-center">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden relative">
           <div className="bg-stone-800 p-6 text-white text-center">
@@ -143,7 +158,7 @@ export default function ReceiverView() {
       { id: 't9', label: 'Plan B išgelbėjo' }
     ];
 
-    return (
+    return renderWithTheme(
       <div className="min-h-screen bg-stone-50 p-6 flex flex-col items-center justify-center">
         <div className="max-w-md w-full">
           <div className="text-center mb-6">
@@ -170,7 +185,7 @@ export default function ReceiverView() {
 
   if (type === 'REVEAL' || isVetoed) {
     if (showPlanB) {
-      return (
+      return renderWithTheme(
         <div className="min-h-screen bg-stone-50 p-6 flex flex-col items-center justify-center">
           <div className="max-w-md w-full bg-white rounded-xl shadow-lg border-2 border-emerald-100 p-6">
             <div className="flex justify-center mb-4">
@@ -199,7 +214,7 @@ export default function ReceiverView() {
       );
     }
 
-    return (
+    return renderWithTheme(
       <div className="min-h-screen bg-rose-50/30 p-6 pb-24">
         <div className="max-w-md mx-auto bg-white rounded-xl shadow-xl overflow-hidden">
           {reveal?.planA?.image ? (

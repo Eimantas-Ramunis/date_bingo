@@ -12,6 +12,7 @@ import planningRoutes from './routes/planning.routes.js';
 import receiverRoutes from './routes/receiver.routes.js';
 import bingoRoutes from './routes/bingo.routes.js';
 import aiRoutes from './routes/ai.routes.js';
+import settingsRoutes from './routes/settings.routes.js';
 import { globalLimiter } from './middleware/rateLimiter.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { getUploadDir } from './utils/uploads.js';
@@ -68,6 +69,7 @@ app.use('/api/planning', planningRoutes);
 app.use('/api/receiver', receiverRoutes); // Public token access
 app.use('/api/bingo', bingoRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Serve Static Frontend (Production)
 if (process.env.NODE_ENV === 'production') {

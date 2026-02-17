@@ -6,6 +6,7 @@ const router = Router();
 
 router.use(requireAuth);
 router.get('/current', planningController.getCurrentPlan);
+router.get('/ideas', planningController.listPlanningIdeas);
 router.get('/suggest', planningController.suggestIdeas);
 router.post('/select', planningController.selectIdea);
 router.post('/token', planningController.generateToken);

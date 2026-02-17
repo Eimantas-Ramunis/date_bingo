@@ -5,3 +5,47 @@
 body {
     @apply bg-stone-50 text-stone-800 font-sans;
 }
+
+.dark body {
+    @apply bg-stone-950 text-stone-100;
+}
+
+.dark .bg-white {
+    background-color: rgb(28 25 23);
+}
+
+.dark .bg-stone-50 {
+    background-color: rgb(41 37 36);
+}
+
+.dark .bg-stone-100 {
+    background-color: rgb(28 25 23);
+}
+
+.dark .text-stone-900,
+.dark .text-stone-800 {
+    color: rgb(245 245 244);
+}
+
+.dark .text-stone-700,
+.dark .text-stone-600 {
+    color: rgb(214 211 209);
+}
+
+.dark .text-stone-500,
+.dark .text-stone-400 {
+    color: rgb(168 162 158);
+}
+
+.dark .border-stone-200,
+.dark .border-stone-300 {
+    border-color: rgb(68 64 60);
+}
+
+.dark input,
+.dark textarea,
+.dark select {
+    background-color: rgb(28 25 23);
+    color: rgb(245 245 244);
+    border-color: rgb(68 64 60);
+}
