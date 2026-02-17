@@ -1,6 +1,8 @@
 import prisma from '../utils/db.js';
 import crypto from 'crypto';
 
+const PREP_STATUSES = new Set(['to_do', 'doing', 'done']);
+
 const parseJson = (value, fallback) => {
   if (!value) return fallback;
   try {
@@ -16,8 +18,22 @@ const toIdeaDto = (idea) => ({
   purposeTags: parseJson(idea.purposeTags, []),
   seasonTags: parseJson(idea.seasonTags, []),
   prepChecklist: parseJson(idea.prepChecklist, []),
+  planAPrepItems: parseJson(idea.planAPrepItems, parseJson(idea.prepChecklist, [])),
+  planBPrepItems: parseJson(idea.planBPrepItems, []),
   planB: parseJson(idea.planB, {})
 });
+
+const buildPrepBoard = (items) => {
+  const safeItems = Array.isArray(items) ? items : [];
+  return safeItems
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean)
+    .map((text) => ({
+      id: crypto.randomUUID(),
+      text,
+      status: 'to_do'
+    }));
+};
 
 const getCooldownMeta = (idea) => {
   if (!idea.lastDoneAt) {
@@ -90,10 +106,15 @@ export const getCurrentPlan = async (req, res, next) => {
       ...plan,
       planASteps: parseJson(plan.planASteps, []),
       planBSteps: parseJson(plan.planBSteps, []),
+      planAPrepBoard: parseJson(plan.planAPrepBoard, []),
+      planBPrepBoard: parseJson(plan.planBPrepBoard, []),
       idea: {
         ...plan.idea,
         vibes: parseJson(plan.idea.vibes, []),
         purposeTags: parseJson(plan.idea.purposeTags, []),
+        seasonTags: parseJson(plan.idea.seasonTags, []),
+        planAPrepItems: parseJson(plan.idea.planAPrepItems, parseJson(plan.idea.prepChecklist, [])),
+        planBPrepItems: parseJson(plan.idea.planBPrepItems, []),
         planB: parseJson(plan.idea.planB, {})
       }
     };
@@ -113,10 +134,15 @@ export const getHistory = async (req, res, next) => {
       ...plan,
       planASteps: parseJson(plan.planASteps, []),
       planBSteps: parseJson(plan.planBSteps, []),
+      planAPrepBoard: parseJson(plan.planAPrepBoard, []),
+      planBPrepBoard: parseJson(plan.planBPrepBoard, []),
       idea: {
         ...plan.idea,
         vibes: parseJson(plan.idea.vibes, []),
         purposeTags: parseJson(plan.idea.purposeTags, []),
+        seasonTags: parseJson(plan.idea.seasonTags, []),
+        planAPrepItems: parseJson(plan.idea.planAPrepItems, parseJson(plan.idea.prepChecklist, [])),
+        planBPrepItems: parseJson(plan.idea.planBPrepItems, []),
         planB: parseJson(plan.idea.planB, {})
       }
     }));
@@ -137,7 +163,11 @@ export const selectIdea = async (req, res, next) => {
     if (existing) return res.status(400).json({ error: 'Active plan already exists' });
 
     const idea = await prisma.dateIdea.findUnique({ where: { id: ideaId } });
+    if (!idea) return res.status(404).json({ error: 'Idea not found' });
+
     const planB = parseJson(idea?.planB, {});
+    const planAPrepItems = parseJson(idea?.planAPrepItems, parseJson(idea?.prepChecklist, []));
+    const planBPrepItems = parseJson(idea?.planBPrepItems, []);
 
     const plan = await prisma.plannedDate.create({
       data: {
@@ -148,6 +178,8 @@ export const selectIdea = async (req, res, next) => {
         hintDuration,
         planASteps: idea.prepChecklist, 
         planBSteps: JSON.stringify(planB.steps || []),
+        planAPrepBoard: JSON.stringify(buildPrepBoard(planAPrepItems)),
+        planBPrepBoard: JSON.stringify(buildPrepBoard(planBPrepItems)),
         planBTitle: planB.title || 'Plan B',
         planBDesc: planB.description || planB.shortDescription || 'No description provided.',
         status: 'PLANNED'
@@ -241,6 +273,53 @@ export const generatePreviewToken = async (req, res, next) => {
 
     res.json({ token: rawToken, type, expiry });
   } catch (err) { next(err); }
+};
+
+export const updatePrepItemStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { planType, itemId, status } = req.body || {};
+
+    if (!['A', 'B'].includes(planType)) {
+      return res.status(400).json({ error: 'planType must be "A" or "B"' });
+    }
+    if (!itemId || typeof itemId !== 'string') {
+      return res.status(400).json({ error: 'itemId is required' });
+    }
+    if (!PREP_STATUSES.has(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const plan = await prisma.plannedDate.findUnique({ where: { id } });
+    if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+    const field = planType === 'A' ? 'planAPrepBoard' : 'planBPrepBoard';
+    const board = parseJson(plan[field], []);
+    const nextBoard = Array.isArray(board) ? [...board] : [];
+    const itemIndex = nextBoard.findIndex((item) => item?.id === itemId);
+    if (itemIndex === -1) {
+      return res.status(404).json({ error: 'Prep item not found' });
+    }
+
+    nextBoard[itemIndex] = {
+      ...nextBoard[itemIndex],
+      status
+    };
+
+    const updated = await prisma.plannedDate.update({
+      where: { id },
+      data: {
+        [field]: JSON.stringify(nextBoard)
+      }
+    });
+
+    res.json({
+      planAPrepBoard: parseJson(updated.planAPrepBoard, []),
+      planBPrepBoard: parseJson(updated.planBPrepBoard, [])
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 // Action: Mark Done
